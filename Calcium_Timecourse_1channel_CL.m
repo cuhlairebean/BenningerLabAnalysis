@@ -15,23 +15,22 @@ close all
 clear all
 clc
 
-addpath('/Users/levittcl/Documents/GitHub/UniversalCode');
-addpath('/Users/levittcl/Documents/GitHub/Calcium_Analysis_Bucket_CL/Universal_Code/')
-addpath '/Users/levittcl/Documents/GitHub/Islet_Analysis';
+% addpath('/Users/levittcl/Documents/GitHub/UniversalCode');
+% addpath('/Users/levittcl/Documents/GitHub/Calcium_Analysis_Bucket_CL/Universal_Code/')
+% addpath '/Users/levittcl/Documents/GitHub/Islet_Analysis'
+addpath ('/Users/levittcl/Documents/GitHub/BenningerLabUniversalFunctions')
 
 %% LOAD CALCIUM IMAGE FILE
 
 % comment out whichever file upload method you aren't using
 
 % 1. SELECT MAUALLY
-% disp('Select Calcium Imaging File');
-% R = bfopen('Select Calcium Imaging File'); % Uses bfopen program to open .czi/.lsm image files
+ disp('Select Calcium Imaging File');
+ R = bfopen('Select Calcium Imaging File'); % Uses bfopen program to open .czi/.lsm image files
 
 % 2. INPUT FILE NAME
-filename = ['/Volumes/CHL2021/For Sara to Analyze/2024_06_30 GCaMP 4 conditions/s293_islet2_2mM-11mM_2mM_11mM.czi'];
-
-
-R = bfopen(filename); % Uses bfopen program to open .czi/.lsm image files
+%filename = ['/Volumes/CHL2021/For Sara to Analyze/2024_06_30 GCaMP 4 conditions/s293_islet2_2mM-11mM_2mM_11mM.czi'];
+%R = bfopen(filename); % Uses bfopen program to open .czi/.lsm image files
 
 
 % Number of channels in file - important if its multichannel or ref.channel

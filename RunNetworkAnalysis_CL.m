@@ -12,7 +12,7 @@ clear all
 clc
 
 % SELECT LOCATION FOR SAVING FILES
-savepath = ['/Users/levittcl/Documents/1_Research/4_Collaboration/2024_Ca for Dylan/Calcium Anlaysis/Mutant 1/'];
+savepath = ['/Users/levittcl/Documents/1_Research/7_Example Imaging Files/test/'];
 
 %% OLD %%
 %%% load MAT file of Calcium Wave: 
@@ -42,7 +42,7 @@ savepath = ['/Users/levittcl/Documents/1_Research/4_Collaboration/2024_Ca for Dy
 %% NEW %%
 
 %load csv: 
-capath = ['/Users/levittcl/Documents/1_Research/4_Collaboration/2024_Ca for Dylan/Calcium Anlaysis/Mutant 1/CaWaveForm.mat']; %%%% Add .mat path here
+capath = ['/Users/levittcl/Documents/1_Research/7_Example Imaging Files/test/CaWaveForm.mat']; %%%% Add .mat path here
 Data = importdata(capath);
 
 %% manually select timecourse
