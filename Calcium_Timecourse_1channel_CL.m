@@ -15,9 +15,11 @@ close all
 clear all
 clc
 
-addpath('/Users/levittcl/Documents/GitHub/UniversalCode');
-addpath('/Users/levittcl/Documents/GitHub/Calcium_Analysis_Bucket_CL/Universal_Code/')
-addpath '/Users/levittcl/Documents/GitHub/Islet_Analysis';
+%addpath('/Users/ibarevel/Documents/GitHub/UniversalCode');
+%addpath('/Users/ibarevel/Documents/GitHub/Calcium_Analysis_Bucket_CL/Universal_Code/')
+%addpath '/Users/ibarevel/Documents/GitHub/Islet_Analysis';
+addpath('/Users/ibarevel/Documents/GitHub/BenningerLabUniversalFunctions/');
+addpath('/Users/ibarevel/Documents/GitHub/BenningerLabAnalysis/');
 
 %% LOAD CALCIUM IMAGE FILE
 
@@ -28,7 +30,7 @@ addpath '/Users/levittcl/Documents/GitHub/Islet_Analysis';
 % R = bfopen('Select Calcium Imaging File'); % Uses bfopen program to open .czi/.lsm image files
 
 % 2. INPUT FILE NAME
-filename = ['/Volumes/CHL2021/For Sara to Analyze/2024_06_30 GCaMP 4 conditions/s293_islet2_2mM-11mM_2mM_11mM.czi'];
+filename = 'CaImagingData/7_Example Imaging Files/1_channel Calcium/control_11mM_islet3.czi';
 
 
 R = bfopen(filename); % Uses bfopen program to open .czi/.lsm image files
@@ -40,7 +42,7 @@ howmanychannel = 1;
 pics=R{1};
 pics=pics(:,1);
 
-for i=1:length(pics)
+for i=1:length(pics) %making the image into an array 
     IMG(:,:,i)=pics{i};
 end
 

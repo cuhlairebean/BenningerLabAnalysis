@@ -3,13 +3,15 @@
 % Modified Claire Levitt 2022
     % add extracting HUB cell timecourses
 
-addpath('/Users/levittcl/Documents/GitHub/Lab_Analysis')
-
-addpath('/Users/levittcl/Documents/GitHub/UniversalCode')
-
 close all
 clear all
 clc
+
+addpath('/Users/ibarevel/Documents/GitHub/BenningerLabUniversalFunctions');
+addpath('/Users/ibarevel/Documents/GitHub/BenningerLabAnalysis/');
+%addpath('/Users/levittcl/Documents/GitHub/Lab_Analysis')
+addpath('/Users/levittcl/Documents/GitHub/UniversalCode')
+
 
 % SELECT LOCATION FOR SAVING FILES
 savepath = ['/Users/levittcl/Documents/1_Research/4_Collaboration/2024_Ca for Dylan/Calcium Anlaysis/Mutant 1/'];
@@ -42,7 +44,8 @@ savepath = ['/Users/levittcl/Documents/1_Research/4_Collaboration/2024_Ca for Dy
 %% NEW %%
 
 %load csv: 
-capath = ['/Users/levittcl/Documents/1_Research/4_Collaboration/2024_Ca for Dylan/Calcium Anlaysis/Mutant 1/CaWaveForm.mat']; %%%% Add .mat path here
+
+capath = ['/Users/ibarevel/Documents/MATLAB/CaImagingData/7_Example Imaging Files/CaWaveform.mat']; %%%% Add .mat path here you add the waveform
 Data = importdata(capath);
 
 %% manually select timecourse
