@@ -20,7 +20,9 @@ clc
 %addpath '/Users/ibarevel/Documents/GitHub/Islet_Analysis';
 addpath('/Users/ibarevel/Documents/GitHub/BenningerLabUniversalFunctions/');
 addpath('/Users/ibarevel/Documents/GitHub/BenningerLabAnalysis/');
-
+addpath('/Users/ibarevel/Library/Application Support/MathWorks/MATLAB Add-Ons/Toolboxes/Bioformats Image Toolbox/BioformatsImage/')
+addpath('/Users/ibarevel/Documents/MATLAB/EndoCaImaging/')
+javaaddpath('/Users/ibarevel/Documents/MATLAB/bioformats_package.jar');
 %% LOAD CALCIUM IMAGE FILE
 
 % comment out whichever file upload method you aren't using
@@ -30,8 +32,8 @@ addpath('/Users/ibarevel/Documents/GitHub/BenningerLabAnalysis/');
 % R = bfopen('Select Calcium Imaging File'); % Uses bfopen program to open .czi/.lsm image files
 
 % 2. INPUT FILE NAME
-filename = 'CaImagingData/7_Example Imaging Files/1_channel Calcium/control_11mM_islet3.czi';
-
+filename = 'EndoCaImaging/11-27-27EndoB4/Endo3oht_1_11-27-24.czi';
+%https://www.openmicroscopy.org/bio-formats/downloads/
 
 R = bfopen(filename); % Uses bfopen program to open .czi/.lsm image files
 
@@ -276,3 +278,29 @@ end
 
 
 disp('END!')
+
+%%%
+% Load the sample data from CaWaveForm.mat
+load('CaWaveForm.mat');  % Assumes the data is stored in a variable named 'data'
+
+% Initialize a matrix to store the result (same size as input)
+result = zeros(size(data));
+
+% Iterate over each sample (row)
+for i = 1:size(data, 1)
+    % Iterate over each time point (column) starting from the 6th point to ensure 5 previous points exist
+    for t = 6:size(data, 2) - 1
+        % Calculate the average of the previous 5 time points
+        avg_prev_5 = mean(data(i, t-5:t-1));
+        
+        % Check if the next time point is exactly 1 point higher than the current point
+        if data(i, t+1) == data(i, t) + 1
+            % Compute the ratio using the jump value and the average of the previous 5 points
+            result(i, t+1) = (data(i, t+1) - data(i, t)) / avg_prev_5;
+        end
+    end
+end
+
+% Display results
+disp('Result matrix with computed ratios:');
+disp(result);
