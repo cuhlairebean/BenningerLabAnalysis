@@ -12,7 +12,7 @@ clear all
 clc
 
 % SELECT LOCATION FOR SAVING FILES
-savepath = ['/Users/levittcl/Documents/1_Research/7_Example Imaging Files/test/'];
+savepath = ['/Users/levittcl/Documents/1_Research/1_Research Projects/3_Pseudo Islet Platform/1_Human Pseudoislet Analysis/Donor 20 (134)_2_17_25/Pseudoislet - Ca/Scrambled/islet4_11mM/'];
 
 %% OLD %%
 %%% load MAT file of Calcium Wave: 
@@ -42,7 +42,7 @@ savepath = ['/Users/levittcl/Documents/1_Research/7_Example Imaging Files/test/'
 %% NEW %%
 
 %load csv: 
-capath = ['/Users/levittcl/Documents/1_Research/7_Example Imaging Files/test/CaWaveForm.mat']; %%%% Add .mat path here
+capath = ['/Users/levittcl/Documents/1_Research/1_Research Projects/3_Pseudo Islet Platform/1_Human Pseudoislet Analysis/Donor 20 (134)_2_17_25/Pseudoislet - Ca/Scrambled/islet4_11mM/CaWaveForm.mat']; %%%% Add .mat path here
 Data = importdata(capath);
 
 %% manually select timecourse
@@ -51,17 +51,17 @@ IsletTC = Data;
 IsletTCfig = figure('Name','Whole Islet Time Course');
 plot(IsletTC); %plots intensity timecourse of entire islet so user can identify first responder and wave origin ranges
 datacursormode on % User can click on the plot to see x and y coordinates
-st = input('Input Starting Frame for First Responder Analysis\n'); %select where first responder analysis should begin (x coordinate value)
-ed = input('Input Ending Frame for First Responder Analysis\n'); % select where first responder analysis should end (x coordinate value)
+%st = input('Input Starting Frame for Hub Cell Analysis\n'); %select where first responder analysis should begin (x coordinate value)
+%ed = input('Input Ending Frame for Hub CellAnalysis\n'); % select where first responder analysis should end (x coordinate value)
 
 %% preset timecourse %%
-%st =1;
+st =1;
   %ed =300;
 % 
 %ca = Data;
 %ca = Data.data(:,:); % for csv only
 % 
- ca = IsletTC(st:ed,:);
+ ca = IsletTC(st:end,:);
 
 %To set the threshold, either manually set: 
 

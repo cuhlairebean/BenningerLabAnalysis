@@ -25,13 +25,11 @@ addpath ('/Users/levittcl/Documents/GitHub/BenningerLabUniversalFunctions')
 % comment out whichever file upload method you aren't using
 
 % 1. SELECT MAUALLY
- disp('Select Calcium Imaging File');
- R = bfopen('Select Calcium Imaging File'); % Uses bfopen program to open .czi/.lsm image files
+% disp('Select Calcium Imaging File');
+% R = bfopen('Select Calcium Imaging File'); % Uses bfopen program to open .czi/.lsm image files
 
 % 2. INPUT FILE NAME
-%filename = ['/Volumes/CHL2021/For Sara to Analyze/2024_06_30 GCaMP 4 conditions/s293_islet2_2mM-11mM_2mM_11mM.czi'];
-
-
+filename = ['/Volumes/CHLDrive2/c3_islet2_11mM.czi'];
 R = bfopen(filename); % Uses bfopen program to open .czi/.lsm image files
 
 
@@ -68,7 +66,7 @@ st=1; % STARTING FRAME: Change this per sample if needed
 [xx, yy, zz] = size(images(:,:,:));
 % ENDING FRAME: Change this per sample if needed
 ed=zz;
-%ed = 2620;
+%ed = 3000;
 
 T=st:1:ed;
 
