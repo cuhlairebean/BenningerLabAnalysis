@@ -15,9 +15,9 @@ close all
 clear all
 clc
 
-addpath('/Users/levittcl/Documents/GitHub/UniversalCode');
-addpath('/Users/levittcl/Documents/GitHub/Calcium_Analysis_Bucket_CL/Universal_Code/')
-
+%addpath('/Users/levittcl/Documents/GitHub/UniversalCode');
+%addpath('/Users/levittcl/Documents/GitHub/Calcium_Analysis_Bucket_CL/Universal_Code/')
+addpath = ('/Volumes/My Passport/Evelyn_PhD/CaMPARI_Project')
 %% LOAD CALCIUM IMAGE FILE
 
 % comment out whichever file upload method you aren't using
@@ -27,7 +27,7 @@ addpath('/Users/levittcl/Documents/GitHub/Calcium_Analysis_Bucket_CL/Universal_C
 % R = bfopen('Select Calcium Imaging File'); % Uses bfopen program to open .czi/.lsm image files
 
 % 2. INPUT FILE NAME
-filename = '/Users/levittcl/Documents/1_Research/7_Example Imaging Files/2_channels_2_calcium/islet3_2mM_11mM_ghrelin_2mM_11mMGLP1.czi';
+filename = '/Volumes/My Passport/Evelyn_PhD/CaMPARI_Project/9-19-25CaMPARI v rhod2/11MPC_2-1-DZX-9-19-25_redandGreenChannel.czi';
 
 
 R = bfopen(filename); % Uses bfopen program to open .czi/.lsm image files
@@ -146,6 +146,7 @@ plot(IsletTC); %plots intensity timecourse of entire islet so user can identify 
 % ca_cells = HI_image{1,1}{2,1}; %green cells
 % ca_cells_resize = imresize(ca_cells,[xx yy]);
 % 
+% 2mMPC_2-1-DZX-9-19-25_redandGreenChannel
 % r = imfuse(ca_cells,red_cells); %red cells + calcium
 % g = imfuse(ca_cells,green_cells); %green cells + calcium
 % 
@@ -162,7 +163,7 @@ plot(IsletTC); %plots intensity timecourse of entire islet so user can identify 
 % ROIs are saved in "CellMask" array and called back to throughout analysis
 % Follow the prompts in the Command Window
 
-%figure, imshow(ref_pic)
+figure, imshow(ref_pic)
 
 CellMask = double(zeros(xx,yy));
 numcells = 1;
@@ -322,11 +323,11 @@ end
 toc
 
 % DELTA CELL TC %
-delta_ca = CellTC;
+redCaMPARI_ca = CellTC;
 
 % Plotting traces for entire time course
 TCFig = figure('Name','Average Intensity Over Time');
-plot(delta_ca);
+plot(redCaMPARI_ca);
 legend(PlotLabels);
 clear images MaskedIMGstack;
 
@@ -353,8 +354,8 @@ saveas(delta_labels,[output_dir '/' filename '_' 'delta cell labels' '.tif']);
 
 %% All Variables %%
 
-T = table(All_TC, delta_ca);
-Ca_all = [All_TC delta_ca];
+T = table(All_TC, redCaMPARI_ca);
+Ca_all = [All_TC redCaMPARI_ca];
 
 save([output_dir '/mixedCaWaveForm.mat'],'Ca_all'); % same cawaveform - Cell TC
 

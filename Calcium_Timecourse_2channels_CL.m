@@ -1,4 +1,4 @@
-%% Extracting Single Cell Timecourse (option: from 2 channels)
+camp_%% Extracting Single Cell Timecourse (option: from 2 channels)
 % Modified from WS_FirstResp_Wave_Analysis
 % 08.28.2023 Claire H Levitt
 
