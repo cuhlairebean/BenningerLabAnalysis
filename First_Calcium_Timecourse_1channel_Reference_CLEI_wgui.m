@@ -7,26 +7,39 @@
 % and change the parameters as needed, it also normalizes and generates
 % matrices per islet
 %need: filename.czi and filename_pre.czi for this code to work, 
-%% ONE-TIME SETUP (new users): copy and paste this into a Terminal (Mac/Linux)
+%% ONE-TIME SETUP (new users): copy and paste this into the MATLAB Command Window
 % -------------------------------------------------------------------------
-%   mkdir -p ~/Documents/GitHub && cd ~/Documents/GitHub
-%   git clone https://github.com/cuhlairebean/BenningerLabUniversalFunctions.git
-%   git clone https://github.com/cuhlairebean/BenningerLabAnalysis.git
+% (requires git: https://git-scm.com/downloads; on a Mac it installs with Xcode command line tools)
+% Downloads/updates both repos into ~/Documents/GitHub (Bio-Formats - bfopen.m and
+% bioformats_package.jar - is inside BenningerLabUniversalFunctions) and installs the
+% required toolboxes if they are missing (needs a MATLAB license that includes them).
 %
-% To update later (gets bug fixes):
-%   cd ~/Documents/GitHub/BenningerLabUniversalFunctions && git pull origin main
-%   cd ~/Documents/GitHub/BenningerLabAnalysis && git pull origin main
+%   gh = fullfile(char(java.lang.System.getProperty('user.home')),'Documents','GitHub');
+%   if ~exist(gh,'dir'), mkdir(gh); end
+%   for r = {'BenningerLabUniversalFunctions','BenningerLabAnalysis'}
+%       dest = fullfile(gh,r{1});
+%       if exist(dest,'dir')   % already downloaded -> get the latest bug fixes
+%           system(['git -C "' dest '" pull origin main']);
+%       else
+%           system(['git clone https://github.com/cuhlairebean/' r{1} '.git "' dest '"']);
+%       end
+%   end
+%   if ~license('test','Image_Toolbox') || ~license('test','Statistics_Toolbox')
+%       arch = lower(computer('arch')); mpmExe = fullfile(tempdir,'mpm');
+%       if startsWith(arch,'win'), mpmExe = [mpmExe '.exe']; mpmUrl = ['https://www.mathworks.com/mpm/' arch '/mpm.exe'];
+%       else, mpmUrl = ['https://www.mathworks.com/mpm/' arch '/mpm']; end
+%       websave(mpmExe,mpmUrl);
+%       if ~startsWith(arch,'win'), system(['chmod +x "' mpmExe '"']); end
+%       system(sprintf(['"%s" install --release=R%s --destination="%s" --products ' ...
+%           'Image_Processing_Toolbox Statistics_and_Machine_Learning_Toolbox'], ...
+%           mpmExe,version('-release'),matlabroot));   % may ask for admin rights; restart MATLAB afterwards
+%   end
 %
-% Bio-Formats (bfopen.m + bioformats_package.jar) is already inside
-% BenningerLabUniversalFunctions - nothing else to download for it.
+% TIP: the lines above start with "%". Select them in the editor and press Ctrl+T
+% (Uncomment) -- or delete the leading "% " -- then copy them into the Command Window.
 %
-% MATLAB toolboxes needed: Image Processing Toolbox and Statistics and
-% Machine Learning Toolbox (requires a license that includes them).
-% Easiest: in MATLAB, Home > Add-Ons > Get Add-Ons, install both.
-% Or from Terminal with the MATLAB Package Manager (mpm); set R2024b and
-% the destination to YOUR installed release/location:
-%   curl -L -o ~/mpm https://www.mathworks.com/mpm/maca64/mpm && chmod +x ~/mpm   % Apple Silicon (use maci64 for Intel Macs)
-%   ~/mpm install --release=R2024b --destination=/Applications/MATLAB_R2024b.app --products Image_Processing_Toolbox Statistics_and_Machine_Learning_Toolbox
+% If the toolbox install does not work, use Home > Add-Ons > Get Add-Ons in MATLAB
+% and install "Image Processing Toolbox" and "Statistics and Machine Learning Toolbox".
 % -------------------------------------------------------------------------
 %% HOUSEKEEPING
 close all
