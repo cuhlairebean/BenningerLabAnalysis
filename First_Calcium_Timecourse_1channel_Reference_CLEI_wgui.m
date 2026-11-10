@@ -65,6 +65,7 @@ if rerun
         descr = {'cells   - draw additional cells','islets  - draw additional islets', ...
                  'periods - re-click periods (baseline, phases...) for every islet','remove  - click cells to remove (every islet)', ...
                  'campari - re-pick the CaMPARI channels, background (autofluorescence) and red/green threshold'};
+        if ~strcmp(rerunUser,'Evelyn'), allSteps(5) = []; descr(5) = []; end    % CaMPARI is only for Evelyn
         [selIdx,okSel] = listdlg('PromptString','What do you want to amend?','ListString',descr, ...
             'InitialValue',find(ismember(allSteps,amendSteps)),'ListSize',[560 120],'Name','Amend');
         if ~okSel || isempty(selIdx), return; end
@@ -925,7 +926,10 @@ end   % if rerun ... else (everything from "Paths for data to analyze" to here i
 %   redo  -> reads the saved file;   amend -> recomputes every cell's ratio (new cells included) from the _pre.czi
 campariRatioAll = []; campariThreshold = NaN; campariBg = [NaN NaN]; campariChannels = [NaN NaN];
 campariFile = fullfile(output_dir,[filename '_CampariInfo.mat']);
-if quiet
+% CaMPARI is ONLY for the user 'Evelyn': for anyone else none of the CaMPARI prompts or files are used.
+if ~strcmp(user,'Evelyn')
+    thrAns = 'No';
+elseif quiet
     thrAns = 'No';   % the threshold needs the _pre.czi + drawing: not part of a re-run
     if exist(campariFile,'file')
         Sc = load(campariFile);
@@ -943,7 +947,7 @@ else
     thrAns = questdlg('Select the CaMPARI red/green threshold for this file?','CaMPARI threshold','Yes','No','No');
 end
 % amend + 'campari': redo the whole step (channels, background, example cells, threshold) with the _pre.czi
-if amend && ismember('campari',amendSteps), thrAns = 'Yes'; end
+if strcmp(user,'Evelyn') && amend && ismember('campari',amendSteps), thrAns = 'Yes'; end
 if strcmp(thrAns,'Yes')
     if isempty(OverlayStack)
         warning('No high-res _pre.czi was loaded - cannot select the threshold.');
