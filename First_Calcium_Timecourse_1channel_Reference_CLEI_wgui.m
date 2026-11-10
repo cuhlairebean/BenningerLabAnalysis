@@ -39,7 +39,7 @@ filepath = ('/Volumes/ESD-USB/Calcium_imaging/10_21_26/');%Volumes
 
 % 2. INPUT FILE NAME
 
-filename = ['Sort_calcium_1.czi'];
+filename = ['10-29-26_5mMPC__d1.czi'];
 czi_file = filename; % raw time-series file; 'filename' is later replaced by the output name you type
 
 %https://www.openmicroscopy.org/bio-formats/downloads/
