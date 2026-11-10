@@ -7,8 +7,28 @@
 % and change the parameters as needed, it also normalizes and generates
 % matrices per islet
 %need: filename.czi and filename_pre.czi for this code to work, 
+%% ONE-TIME SETUP (new users): copy and paste this into a Terminal (Mac/Linux)
+% -------------------------------------------------------------------------
+%   mkdir -p ~/Documents/GitHub && cd ~/Documents/GitHub
+%   git clone https://github.com/cuhlairebean/BenningerLabUniversalFunctions.git
+%   git clone https://github.com/cuhlairebean/BenningerLabAnalysis.git
+%
+% To update later (gets bug fixes):
+%   cd ~/Documents/GitHub/BenningerLabUniversalFunctions && git pull origin main
+%   cd ~/Documents/GitHub/BenningerLabAnalysis && git pull origin main
+%
+% Bio-Formats (bfopen.m + bioformats_package.jar) is already inside
+% BenningerLabUniversalFunctions - nothing else to download for it.
+%
+% MATLAB toolboxes needed: Image Processing Toolbox and Statistics and
+% Machine Learning Toolbox (requires a license that includes them).
+% Easiest: in MATLAB, Home > Add-Ons > Get Add-Ons, install both.
+% Or from Terminal with the MATLAB Package Manager (mpm); set R2024b and
+% the destination to YOUR installed release/location:
+%   curl -L -o ~/mpm https://www.mathworks.com/mpm/maca64/mpm && chmod +x ~/mpm   % Apple Silicon (use maci64 for Intel Macs)
+%   ~/mpm install --release=R2024b --destination=/Applications/MATLAB_R2024b.app --products Image_Processing_Toolbox Statistics_and_Machine_Learning_Toolbox
+% -------------------------------------------------------------------------
 %% HOUSEKEEPING
-% Add things whatever
 close all
 clear all
 clc
@@ -16,12 +36,29 @@ clc
 % (placed after 'clear all' so the answer is not erased)
 user = questdlg('Who is running this analysis?','User','Evelyn','Other','Evelyn');
 if isempty(user), user = 'Other'; end
-analysisDatasetPath = '/Users/ibarevel/Desktop/CaMPARI/Calcium Imaging/Analysis/November13_AllCaMPARI_Sept-Nov/Analysis_dataset_detrended.xlsx';
-%% Paths for code functions and packages
-addpath('/Users/ibarevel/Documents/GitHub/BenningerLabUniversalFunctions/');
-addpath('/Users/ibarevel/Documents/GitHub/BenningerLabAnalysis/');
-addpath('/Users/ibarevel/Library/Application Support/MathWorks/MATLAB Add-Ons/Toolboxes/Bioformats Image Toolbox/BioformatsImage/')
-javaaddpath('/Users/ibarevel/Documents/MATLAB/bioformats_package.jar');
+analysisDatasetPath = '/Users/ibarevel/Desktop/CaMPARI/Calcium Imaging/Analysis/November13_AllCaMPARI_Sept-Nov/Analysis_dataset_detrended.xlsx'; % Evelyn only
+%% Paths for code functions and packages (found automatically - no editing needed)
+% Looks for the two cloned repos next to each other (e.g. ~/Documents/GitHub/).
+analysisDir = fileparts(mfilename('fullpath'));
+if isempty(analysisDir), analysisDir = pwd; end
+univDir = fullfile(fileparts(analysisDir),'BenningerLabUniversalFunctions');
+if ~exist(univDir,'dir')
+    univDir = fullfile(getenv('HOME'),'Documents','GitHub','BenningerLabUniversalFunctions');
+end
+if ~exist(univDir,'dir')
+    error(['BenningerLabUniversalFunctions not found. Clone it next to BenningerLabAnalysis ' ...
+        '(see ONE-TIME SETUP at the top of this file).']);
+end
+addpath(univDir);
+addpath(analysisDir);
+bfJar = fullfile(univDir,'bioformats_package.jar');   % Bio-Formats jar shipped in the repo
+if ~any(strcmp(javaclasspath('-all'),bfJar))
+    javaaddpath(bfJar);
+end
+% Required toolboxes
+if ~license('test','Image_Toolbox') || ~license('test','Statistics_Toolbox')
+    warning('Image Processing Toolbox and/or Statistics and Machine Learning Toolbox not licensed - some steps will fail.');
+end
 
 
 %% Paths for data to analyze
