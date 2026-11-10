@@ -33,11 +33,15 @@ rerunSex          = 'F';
 rerunAge          = NaN;
 % --- WHAT TO CHANGE IN THE RERUN (all optional; leave empty = redo everything with the saved choices) ---
 rerunIslets       = ['all'];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
-rerunReviewIslets = [];      % islets whose traces open in the click-to-remove window: [2], [1 3] or 'all'
+rerunReviewIslets = [];      % islets whose traces                        open in the click-to-remove window: [2], [1 3] or 'all'
 rerunReselectPeriods = [];   % islets whose periods (baseline, phases...) are re-clicked: [2] or 'all' (previous ones are shown)
-rerunRemoveCells  = {};      % remove specific cells without a window: {islet, [cell numbers]; ...}
+rerunRemoveCells  = {'all'};      % remove specific cells without a window: {islet, [cell numbers]; ...}
                              %   e.g. {2,[5 7]; 3,12}  = cells 5 and 7 of islet 2, cell 12 of islet 3
 rerunRestoreIslets = [];     % islets whose previously removed cells are put back first, e.g. [2] or 'all'
+rerunCampari      = false;   % Evelyn only, REDO mode: also redo the CaMPARI channels / background / threshold / red-green
+                             %   classification with a NEW color file. Re-uses all saved traces, cells and periods; only the
+                             %   _pre.czi is needed (found in the current folder, or you pick it). Colored figures update.
+rerunPreCzi       = '';      % optional: path/name of the _pre.czi for rerunCampari ('' = search the current folder)
 % Removals are ADDED to the ones saved by the previous run and saved again (_RemovedCells.mat).
 % Only the islets in rerunIslets are re-exported; every output file of those islets is overwritten.
 %
@@ -53,7 +57,7 @@ amendSteps    = {'cells'};       % pre-selected steps in the AMEND list: 'cells'
 
 %% HOUSEKEEPING
 close all
-clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunReselectPeriods rerunRemoveCells rerunRestoreIslets amendCzi amendSteps
+clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunReselectPeriods rerunRemoveCells rerunRestoreIslets rerunCampari rerunPreCzi amendCzi amendSteps
 clc
 amend = false;
 if rerun
@@ -926,6 +930,34 @@ end   % if rerun ... else (everything from "Paths for data to analyze" to here i
 %   redo  -> reads the saved file;   amend -> recomputes every cell's ratio (new cells included) from the _pre.czi
 campariRatioAll = []; campariThreshold = NaN; campariBg = [NaN NaN]; campariChannels = [NaN NaN];
 campariFile = fullfile(output_dir,[filename '_CampariInfo.mat']);
+% REDO + rerunCampari: redo ONLY the CaMPARI step. Loads the _pre.czi plus the saved cell/islet masks,
+% so no raw time-series .czi, no cell drawing and no trace extraction is needed.
+if rerun && rerunCampari && strcmp(user,'Evelyn')
+    try
+        preFile = rerunPreCzi;
+        if isempty(preFile)
+            pz = dir(fullfile(pwd,'*.czi'));
+            pz = pz(~cellfun(@isempty,regexp({pz.name},'[Pp]re\d*\.czi$','once')));
+            if numel(pz) == 1
+                preFile = fullfile(pz(1).folder,pz(1).name);
+            else
+                [pzF,pzP] = uigetfile('*.czi',['Select the _pre.czi of ' filename],[pwd filesep]);
+                if ~isequal(pzF,0), preFile = fullfile(pzP,pzF); end
+            end
+        end
+        if isempty(preFile), error('no _pre.czi selected'); end
+        OverlayStack = loadCziChannels(preFile);
+        fprintf('CaMPARI redo: loaded %s (%d channels)\n',preFile,size(OverlayStack,3));
+        Sm = load(fullfile(output_dir,[filename '_Masks.mat'])); fnM = fieldnames(Sm);
+        if isfield(Sm,'CellMask'), CellMask_All = Sm.CellMask; else, CellMask_All = Sm.(fnM{1}); end
+        Si = load(fullfile(output_dir,[filename '_IsletMask.mat']));
+        if isfield(Si,'IsletMask'), IsletMask = Si.IsletMask; else, fnI = fieldnames(Si); IsletMask = Si.(fnI{1}); end
+    catch ME
+        warning('CaMPARI redo could not load its inputs (%s). Skipping the threshold step.',ME.message);
+        OverlayStack = [];
+    end
+end
+
 % CaMPARI is ONLY for the user 'Evelyn': for anyone else none of the CaMPARI prompts or files are used.
 if ~strcmp(user,'Evelyn')
     thrAns = 'No';
@@ -947,7 +979,7 @@ else
     thrAns = questdlg('Select the CaMPARI red/green threshold for this file?','CaMPARI threshold','Yes','No','No');
 end
 % amend + 'campari': redo the whole step (channels, background, example cells, threshold) with the _pre.czi
-if strcmp(user,'Evelyn') && amend && ismember('campari',amendSteps), thrAns = 'Yes'; end
+if strcmp(user,'Evelyn') && ((amend && ismember('campari',amendSteps)) || (rerun && rerunCampari)), thrAns = 'Yes'; end
 if strcmp(thrAns,'Yes')
     if isempty(OverlayStack)
         warning('No high-res _pre.czi was loaded - cannot select the threshold.');
