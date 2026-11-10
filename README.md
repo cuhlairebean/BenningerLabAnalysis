@@ -100,4 +100,4 @@ Output: first responder excel sheet – requires additional analysis to rank cel
 Settings are at the top of the wgui script.
 
 - **rerun = true**: rebuild exports from saved files (no .czi needed, no popups). Options: rerunIslets, rerunReviewIslets (click-to-remove window, or all), rerunReselectPeriods, rerunRemoveCells, rerunRestoreIslets.
-- **amend = true** (rerun = false): run from the folder holding the .czi and the previous outputs. Earlier islets, cells, periods and removals load automatically. amendSteps = any of cells, islets, periods, remove. New cells/islets are numbered after the old ones; old numbers never change. The background-removal click is skipped.
+- **Amend**: with rerun = true you are asked Redo or Amend (then which steps). Run from the folder holding the .czi; previous outputs come from rerunFolder/rerunFilename. Earlier islets, cells, periods and removals load automatically. amendSteps = any of cells, islets, periods, remove. New cells/islets are numbered after the old ones; old numbers never change. The background-removal click is skipped.

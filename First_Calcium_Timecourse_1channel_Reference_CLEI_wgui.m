@@ -41,24 +41,43 @@ rerunRestoreIslets = [];     % islets whose previously removed cells are put bac
 % Removals are ADDED to the ones saved by the previous run and saved again (_RemovedCells.mat).
 % Only the islets in rerunIslets are re-exported; every output file of those islets is overwritten.
 %
-% AMEND MODE: set amend = true (and rerun = false) to ADD to a previous run using the raw .czi:
-% add islets / add cells / re-click periods / remove cells. Run it from the folder that holds the .czi
-% (the outputs of the previous run are looked for there too, or in amendFolder). Earlier masks, periods
-% and removals are loaded automatically (no import popups); earlier cell numbers never change.
-% Settings of the rerun block above are reused (rerunMultiplyNeg1, rerunUser, rerunDrug, rerunSex, rerunAge,
-% rerunIslets, rerunRemoveCells ...). The background-removal click is skipped (plain average image is shown).
-amend         = false;
-amendFolder   = '';              % '' = current folder
-amendFilename = '';              % output name used in the previous run; '' = auto-detect from *_IsletMask.mat
-amendCzi      = '';              % '' = search the folder for the matching .czi (asks only if unclear)
-amendSteps    = {'cells'};       % any of: 'islets' (draw extra islets), 'cells' (draw extra cells),
-                                 %         'periods' (re-click periods, all islets), 'remove' (click-to-remove window, all islets)
-if amend && rerun, error('Set only one of rerun / amend to true.'); end
+% With rerun = true you are asked ONE question: REDO or AMEND.
+%   REDO  = rebuild the exports from the saved files with the settings above (no .czi needed).
+%   AMEND = ADD to the previous outputs using the raw .czi (searched in the current folder): add cells,
+%           add islets, re-click periods, remove cells by clicking. A list asks which of these you want.
+%           Earlier masks, periods and removals load automatically; earlier cell numbers never change.
+%           The previous outputs are taken from rerunFolder / rerunFilename (blank = current folder /
+%           auto-detected). The background-removal click is skipped (plain average image is shown).
+amendCzi      = '';              % optional: name/path of the raw .czi ('' = search the current folder)
+amendSteps    = {'cells'};       % pre-selected steps in the AMEND list: 'cells' 'islets' 'periods' 'remove'
 
 %% HOUSEKEEPING
 close all
-clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunReselectPeriods rerunRemoveCells rerunRestoreIslets amend amendFolder amendFilename amendCzi amendSteps
+clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunReselectPeriods rerunRemoveCells rerunRestoreIslets amendCzi amendSteps
 clc
+amend = false;
+if rerun
+    modeAns = questdlg('Re-run: REDO the exports from the saved files, or AMEND the previous outputs (add cells / islets / periods / removals using the .czi)?', ...
+        'Re-run mode','Redo','Amend','Redo');
+    if isempty(modeAns), return; end
+    if strcmp(modeAns,'Amend')
+        allSteps = {'cells','islets','periods','remove'};
+        descr = {'cells   - draw additional cells','islets  - draw additional islets', ...
+                 'periods - re-click periods (baseline, phases...) for every islet','remove  - click cells to remove (every islet)'};
+        [selIdx,okSel] = listdlg('PromptString','What do you want to amend?','ListString',descr, ...
+            'InitialValue',find(ismember(allSteps,amendSteps)),'ListSize',[460 100],'Name','Amend');
+        if ~okSel || isempty(selIdx), return; end
+        amendSteps = allSteps(selIdx);
+        amend = true; rerun = false;          % amend runs through the .czi pipeline below
+    end
+end
+% amend: outputs live in rerunFolder (if set and existing) else the current folder; the .czi is searched in the current folder
+amendFolder = pwd; amendFilename = '';
+amendOut = pwd;
+if amend
+    if ~isempty(rerunFolder) && isfolder(rerunFolder), amendOut = rerunFolder; end
+    amendFilename = rerunFilename;
+end
 % Who is running the analysis? 'Evelyn' also exports the Analysis_dataset_detrended.xlsx workbook
 if rerun || amend
     user = rerunUser;
@@ -268,12 +287,12 @@ if amend
     amendDir = amendFolder; if isempty(amendDir), amendDir = pwd; end
     filepath = amendDir; addpath(filepath);
     if isempty(amendFilename)
-        imfL = dir(fullfile(amendDir,'*_IsletMask.mat'));
+        imfL = dir(fullfile(amendOut,'*_IsletMask.mat'));
         nmL = unique(regexprep({imfL.name},'_IsletMask\.mat$',''));
         if numel(nmL) == 1
             amendFilename = nmL{1};
         else
-            error('Amend: set amendFilename (output name of the previous run). *_IsletMask.mat found in %s: %s',amendDir,strjoin(nmL,', '));
+            error('Amend: set amendFilename (output name of the previous run). *_IsletMask.mat found in %s: %s',amendOut,strjoin(nmL,', '));
         end
     end
     if ~isempty(amendCzi)
@@ -362,7 +381,7 @@ clear omeMeta;
 
 % SELECT LOCATION FOR SAVING FILES
 if amend
-    output_dir = amendDir;
+    output_dir = amendOut;
     filename = amendFilename;
     fprintf('Amend: outputs of "%s" in %s\n',filename,output_dir);
 else
