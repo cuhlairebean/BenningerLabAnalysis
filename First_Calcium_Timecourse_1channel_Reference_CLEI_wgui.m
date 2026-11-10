@@ -19,6 +19,7 @@
 % Then restart MATLAB, run the script again and choose "Other".
 % To get bug fixes later: choose "New user" again (it pulls the latest code), or run
 % `git pull origin main` in both repo folders.
+
 %% SETTINGS (edit here)
 % RERUN MODE: set rerun = true to skip all image processing/clicking and rebuild the
 % normalized/frequency outputs from files saved by a previous run (no popups).
@@ -31,17 +32,20 @@ rerunDrug         = 'KCl';      % Evelyn extras (only used if rerunUser = 'Evely
 rerunSex          = 'F';
 rerunAge          = NaN;
 % --- WHAT TO CHANGE IN THE RERUN (all optional; leave empty = redo everything with the saved choices) ---
-rerunIslets       = [];      % islets to reprocess, e.g. [2]. [] = all islets
-rerunReviewIslets = [];      % islets whose traces open in the click-to-remove window, e.g. [2]
+rerunIslets       = [];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
+rerunReviewIslets = [];      % islets whose traces open in the click-to-remove window: [2], [1 3] or 'all'
+rerunReselectPeriods = [];   % islets whose periods (baseline, phases...) are re-clicked: [2] or 'all' (previous ones are shown)
 rerunRemoveCells  = {};      % remove specific cells without a window: {islet, [cell numbers]; ...}
                              %   e.g. {2,[5 7]; 3,12}  = cells 5 and 7 of islet 2, cell 12 of islet 3
-rerunRestoreIslets = [];     % islets whose previously removed cells are put back first, e.g. [2]
+rerunRestoreIslets = [];     % islets whose previously removed cells are put back first, e.g. [2] or 'all'
 % Removals are ADDED to the ones saved by the previous run and saved again (_RemovedCells.mat).
 % Only the islets in rerunIslets are re-exported; every output file of those islets is overwritten.
+% (Adding/redrawing islet or cell MASKS needs the raw .czi - run the normal pipeline (rerun = false) for that;
+%  its "import previous islet mask / periods" buttons reuse your earlier selections.)
 
 %% HOUSEKEEPING
 close all
-clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunRemoveCells rerunRestoreIslets
+clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunReselectPeriods rerunRemoveCells rerunRestoreIslets
 clc
 % Who is running the analysis? 'Evelyn' also exports the Analysis_dataset_detrended.xlsx workbook
 if rerun
@@ -916,6 +920,8 @@ else
         runFreqAns = strcmp(faAns,'Yes');
     end
 
+    % islet selector: 'all' or a list of islet numbers
+    inList = @(l,kk) (ischar(l) && strcmpi(l,'all')) || (isnumeric(l) && ismember(kk,l));
     for g = 1:numel(groupIDs)
         k = groupIDs(g);
         if k == 0, continue; end            % cells outside any islet have no period selection
@@ -940,14 +946,14 @@ else
         end
         if rerun
             % re-run: optionally restrict to some islets
-            if ~isempty(rerunIslets) && ~ismember(k,rerunIslets), continue; end
+            if ~isempty(rerunIslets) && ~inList(rerunIslets,k), continue; end
             % start from the removal saved by the previous run (unless restored)
             rf = fullfile(output_dir,[filename sfx '_RemovedCells.mat']);
             removedCells = {};
-            if exist(rf,'file') && ~ismember(k,rerunRestoreIslets)
+            if exist(rf,'file') && ~inList(rerunRestoreIslets,k)
                 Sr = load(rf); fnR = fieldnames(Sr);
                 if isfield(Sr,'removedCells'), removedCells = cellstr(Sr.removedCells); else, removedCells = cellstr(Sr.(fnR{1})); end
-            elseif ismember(k,rerunRestoreIslets)
+            elseif inList(rerunRestoreIslets,k)
                 fprintf('  Islet %d: previous removals cleared (rerunRestoreIslets).\n',k);
             end
             % new removals typed in rerunRemoveCells
@@ -957,8 +963,31 @@ else
                 end
             end
             removedCells = unique(removedCells,'stable');
+            % optional: re-select the periods of this islet (previous selection shown as the starting point)
+            if inList(rerunReselectPeriods,k)
+                pNames = {'Low glucose','High glucose','Drug','Baseline','First phase','Second phase'};
+                initP = nan(numel(pNames),2);
+                for pp_ = 1:numel(pNames)
+                    jj = find(strcmpi({IsletPeriods_all{k}.name},pNames{pp_}),1);
+                    if ~isempty(jj), initP(pp_,:) = [IsletPeriods_all{k}(jj).start IsletPeriods_all{k}(jj).end]; end
+                end
+                tcP = IsletTC_all{k}; if isempty(tcP), tcP = mean(wf.CellTC,2,'omitnan'); end
+                PerFig = figure('Name',sprintf('Whole Islet Time Course - islet%d',k));
+                plot(tcP); xlabel('Frame index'); ylabel('Mean intensity');
+                title(sprintf('%s islet%d',filename,k),'Interpreter','none');
+                [IsletPeriods, PeriodIndices] = selectTimeRanges(tcP, pNames, sprintf('%s islet%d',filename,k), PerFig, initP, []);
+                IsletPeriods_all{k} = IsletPeriods;
+                periodNames = pNames; %#ok<NASGU>
+                colNames = matlab.lang.makeValidName(strrep(pNames,' ','_'));
+                writetable(array2table(PeriodIndices,'VariableNames',colNames),[output_dir '/' filename sfx '_PeriodIndices.csv']);
+                writetable(table(pNames(:),[IsletPeriods.start]',[IsletPeriods.end]','VariableNames',{'Period','StartIndex','EndIndex'}), ...
+                    [output_dir '/' filename sfx '_PeriodRanges.csv']);
+                save([output_dir '/' filename sfx '_PeriodIndices.mat'],'IsletPeriods','PeriodIndices','periodNames');
+                saveas(PerFig,[output_dir '/' filename sfx '_IsletTC_periods.tif']);
+                fprintf('  Islet %d: periods re-selected and saved.\n',k);
+            end
             % optional click-to-remove window (traces shown with the saved removals already applied)
-            if ismember(k,rerunReviewIslets)
+            if inList(rerunReviewIslets,k)
                 curMask = ~ismember(cellLabels,removedCells);
                 lblNow = cellLabels(curMask);
                 keepNow = removeCellsGUI(CellTC_use(:,curMask), lblNow, [filename sfx]);
