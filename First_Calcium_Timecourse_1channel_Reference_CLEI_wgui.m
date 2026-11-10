@@ -32,16 +32,19 @@ rerunDrug         = 'KCl';      % Evelyn extras (only used if rerunUser = 'Evely
 rerunSex          = 'F';
 rerunAge          = NaN;
 % --- WHAT TO CHANGE IN THE RERUN (all optional; leave empty = redo everything with the saved choices) ---
-rerunIslets       = ['all'];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
+rerunIslets       = [];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
 rerunReviewIslets = [];      % islets whose traces                        open in the click-to-remove window: [2], [1 3] or 'all'
 rerunReselectPeriods = [];   % islets whose periods (baseline, phases...) are re-clicked: [2] or 'all' (previous ones are shown)
-rerunRemoveCells  = {'all'};      % remove specific cells without a window: {islet, [cell numbers]; ...}
+rerunRemoveCells  = {};      % remove specific cells without a window: {islet, [cell numbers]; ...}
                              %   e.g. {2,[5 7]; 3,12}  = cells 5 and 7 of islet 2, cell 12 of islet 3
 rerunRestoreIslets = [];     % islets whose previously removed cells are put back first, e.g. [2] or 'all'
 rerunCampari      = false;   % Evelyn only, REDO mode: also redo the CaMPARI channels / background / threshold / red-green
                              %   classification with a NEW color file. Re-uses all saved traces, cells and periods; only the
                              %   _pre.czi is needed (found in the current folder, or you pick it). Colored figures update.
 rerunPreCzi       = '';      % optional: path/name of the _pre.czi for rerunCampari ('' = search the current folder)
+rerunPlotsOnly    = true;   % REDO mode: ONLY redraw the normalized-trace figures from the saved _normalized.xlsx
+                             %   (no reprocessing, no exports, no windows). Use after changing how the plot looks.
+                             %   Islets = rerunIslets. CaMPARI colors use the saved _CampariInfo.mat.
 % Removals are ADDED to the ones saved by the previous run and saved again (_RemovedCells.mat).
 % Only the islets in rerunIslets are re-exported; every output file of those islets is overwritten.
 %
@@ -57,8 +60,10 @@ amendSteps    = {'cells'};       % pre-selected steps in the AMEND list: 'cells'
 
 %% HOUSEKEEPING
 close all
-clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunReselectPeriods rerunRemoveCells rerunRestoreIslets rerunCampari rerunPreCzi amendCzi amendSteps
+clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunReselectPeriods rerunRemoveCells rerunRestoreIslets rerunCampari rerunPreCzi rerunPlotsOnly amendCzi amendSteps
+if rerunPlotsOnly, rerunCampari = false; end   % plots only never redoes the CaMPARI step
 clc
+applyLightTheme();   % light theme for all plots: white background, black fonts and lines
 amend = false;
 if rerun
     modeAns = questdlg('Re-run: REDO the exports from the saved files, or AMEND the previous outputs (add cells / islets / periods / removals using the .czi)?', ...
@@ -1043,6 +1048,59 @@ if strcmp(thrAns,'Yes')
 end
 
 
+%% RERUN PLOTS ONLY (rerun = true, Redo, rerunPlotsOnly = true)
+% Redraws the normalized-trace figure of each islet straight from the saved <name>_islet#_normalized.xlsx
+% ('data' sheet = the final normalized traces). No detrending, normalization, exports, removal windows or
+% frequency analysis are redone: only the figure is redrawn (and re-saved as .tif/.fig). Use it after changing
+% how the plot looks (e.g. ALPHA in plotNormalizedTraces.m or the colors in get_campari_style.m).
+if rerun && rerunPlotsOnly
+    inL = @(l,kk) isempty(l) || (ischar(l) && strcmpi(l,'all')) || (isnumeric(l) && ismember(kk,l));
+    for k = groupIDs
+        if ~inL(rerunIslets,k), continue; end
+        sfx = sprintf('_islet%d',k);
+        xlN = fullfile(output_dir,[filename sfx '_normalized.xlsx']);
+        if ~exist(xlN,'file'), warning('Plots only: %s not found - skipping islet %d.',xlN,k); continue; end
+        try
+            Td = readtable(xlN,'Sheet','data');
+            vn = Td.Properties.VariableNames;
+            isCellCol = ~cellfun(@isempty,regexp(vn,'^cell\d+$','once'));
+            Nmat = Td{:,isCellCol};
+            idsPl = cellfun(@(s) str2double(s(5:end)),vn(isCellCol));      % global cell numbers
+            tPl = (1:size(Nmat,1))'; xlab = 'Frame index';
+            if ismember('time',vn) && ~any(isnan(Td.time)), tPl = Td.time(:); xlab = 'Time (s)'; end
+            ratioIslet = [];
+            if strcmp(user,'Evelyn') && ~isempty(campariRatioAll) && ~isnan(campariThreshold)
+                ratioIslet = nan(1,numel(idsPl));
+                okId = idsPl >= 1 & idsPl <= numel(campariRatioAll);
+                ratioIslet(okId) = campariRatioAll(idsPl(okId));
+            end
+            [NormFig,~,~] = plotNormalizedTraces(tPl, Nmat, xlab, [filename sfx], ratioIslet, campariThreshold);
+            saveas(NormFig, fullfile(output_dir,[filename sfx '_NormalizedTraces.tif']));
+            savefig(NormFig, fullfile(output_dir,[filename sfx '_NormalizedTraces.fig']));
+            fprintf('Plots only: redrew %s%s (%d cells).\n',filename,sfx,size(Nmat,2));
+        catch MEp
+            warning('Plots only: could not redraw islet %d (%s).',k,MEp.message);
+        end
+    end
+    disp('Plots only: done (nothing else was reprocessed).');
+    return
+end
+
+
+% Global cell-mask image (pixel value = global cell number) shown in the click-to-remove window so cells
+% can be removed by clicking a trace OR the cell itself. Empty = the window shows traces only.
+gMask = [];
+try
+    if exist('CellMask_All','var') && ~isempty(CellMask_All)
+        gMask = CellMask_All;
+    elseif exist(fullfile(output_dir,[filename '_Masks.mat']),'file')
+        Sg = load(fullfile(output_dir,[filename '_Masks.mat'])); fnG = fieldnames(Sg);
+        if isfield(Sg,'CellMask'), gMask = Sg.CellMask; else, gMask = Sg.(fnG{1}); end
+    end
+catch
+    gMask = [];
+end
+
 %% PROCESSING: PER-CELL DETREND -> NORMALIZE (dF/F) TO EACH CELL'S OWN BASELINE -> (x -1) AND EXPORT (one workbook per islet)
 % On the WHOLE matrix (every frame of every cell), cell by cell:
 %   1) detrend    trendline = slope*time + intercept (the cell's OWN regression) is subtracted.
@@ -1260,7 +1318,7 @@ else
                     if isfield(matsRm,'normalized') && isequal(size(matsRm.normalized),size(CellTC_use(:,curMask))), dispNorm = matsRm.normalized; end
                 catch
                 end
-                keepNow = removeCellsGUI(CellTC_use(:,curMask), lblNow, [filename sfx], dispNorm);
+                keepNow = removeCellsGUI(CellTC_use(:,curMask), lblNow, [filename sfx], dispNorm, '', gMask, cellIDs_use(curMask));
                 removedCells = unique([removedCells, lblNow(~keepNow)],'stable');
             end
             rmMask = ismember(cellLabels,removedCells);
@@ -1293,7 +1351,7 @@ else
             'Remove cells','Yes','No','No');
         if isvalid(previewFig), close(previewFig); end
         if strcmp(rmAns,'Yes')
-            keepCells = removeCellsGUI(CellTC_use, cellLabels, [filename sfx], dispNorm, yLab);
+            keepCells = removeCellsGUI(CellTC_use, cellLabels, [filename sfx], dispNorm, yLab, gMask, cellIDs_use);
             if any(~keepCells)
                 fprintf('  Removed %d cell(s): %s\n',nnz(~keepCells),strjoin(cellLabels(~keepCells),', '));
                 removedCells = cellLabels(~keepCells);
