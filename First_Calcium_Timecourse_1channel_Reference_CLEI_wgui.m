@@ -141,6 +141,16 @@ if rerun
     filename = rerunFilename;
     user = rerunUser;
     if ~exist(output_dir,'dir'), error('rerunFolder does not exist: %s',output_dir); end
+    % filename left blank -> infer it from the files in the folder
+    if isempty(filename)
+        wfAll = dir(fullfile(output_dir,'*_islet*_CaWaveForm.mat'));
+        pre = unique(regexprep({wfAll.name},'_islet\d+_CaWaveForm\.mat$',''));
+        if numel(pre) == 1
+            filename = pre{1};
+        else
+            error('Re-run: set rerunFilename. Found these names in the folder: %s',strjoin(pre,', '));
+        end
+    end
     wfs = dir(fullfile(output_dir,[filename '_islet*_CaWaveForm.mat']));
     groupIDs = [];
     for q = 1:numel(wfs)
@@ -157,18 +167,47 @@ if rerun
     IsletPeriods_all = cell(1,nIslets);
     IsletTC_all = cell(1,nIslets);
     for k = groupIDs
-        pf = fullfile(output_dir,sprintf('%s_islet%d_PeriodIndices.mat',filename,k));
-        if ~exist(pf,'file')
-            error('Re-run: missing %s (the period selection saved by the original run).',pf);
+        base = fullfile(output_dir,sprintf('%s_islet%d',filename,k));
+        % Periods: (1) _PeriodIndices.mat (any variable that is a struct with name/start/end),
+        % (2) _PeriodRanges.csv, (3) the 'Conditions' sheet of _normalized.xlsx. Older runs may only have some of these.
+        P = [];
+        if exist([base '_PeriodIndices.mat'],'file')
+            Sp = load([base '_PeriodIndices.mat']);
+            fn = fieldnames(Sp);
+            for q = 1:numel(fn)
+                v = Sp.(fn{q});
+                if isstruct(v) && all(isfield(v,{'name','start','end'})), P = v; break; end
+            end
         end
-        Sp = load(pf,'IsletPeriods');
-        IsletPeriods_all{k} = Sp.IsletPeriods;
-        tcf = fullfile(output_dir,sprintf('%s_islet%d_IsletTC.mat',filename,k));
+        if isempty(P) && exist([base '_PeriodRanges.csv'],'file')
+            try
+                T = readtable([base '_PeriodRanges.csv']);
+                P = struct('name',cellstr(string(T{:,1})),'start',num2cell(T{:,2}),'end',num2cell(T{:,3}));
+                P = P(:)';
+            catch
+            end
+        end
+        if isempty(P) && exist([base '_normalized.xlsx'],'file')
+            try
+                T = readtable([base '_normalized.xlsx'],'Sheet','Conditions');
+                nm = cellstr(string(T{:,1}));
+                nm(startsWith(nm,'BASELINE')) = {'Baseline'};
+                P = struct('name',nm,'start',num2cell(T{:,2}),'end',num2cell(T{:,3}));
+                P = P(:)';
+            catch
+            end
+        end
+        if isempty(P)
+            error(['Re-run: could not recover the selected periods for islet %d (looked for _PeriodIndices.mat, ' ...
+                '_PeriodRanges.csv and the Conditions sheet of _normalized.xlsx in %s).'],k,output_dir);
+        end
+        IsletPeriods_all{k} = P;
+        tcf = [base '_IsletTC.mat'];
         if exist(tcf,'file')
-            Stc = load(tcf,'IsletTC'); IsletTC_all{k} = Stc.IsletTC;
+            Stc = load(tcf); fn = fieldnames(Stc);
+            if isfield(Stc,'IsletTC'), IsletTC_all{k} = Stc.IsletTC; else, IsletTC_all{k} = Stc.(fn{1}); end
         else
-            Swf = load(fullfile(output_dir,sprintf('%s_islet%d_CaWaveForm.mat',filename,k)),'CellTC');
-            IsletTC_all{k} = nan(size(Swf.CellTC,1)+1,1);
+            IsletTC_all{k} = [];     % only used for plotting in the first run
         end
     end
     OverlayStack = [];
@@ -873,11 +912,24 @@ else
         k = groupIDs(g);
         if k == 0, continue; end            % cells outside any islet have no period selection
         sfx = groupSuffix{g};
-        wf = load(fullfile(output_dir,[filename sfx '_CaWaveForm.mat']),'CellTC'); % raw data
-        ids = load(fullfile(output_dir,[filename sfx '_CellIDs.mat']),'cellIDs');
+        wfS = load(fullfile(output_dir,[filename sfx '_CaWaveForm.mat'])); % raw data
+        if isfield(wfS,'CellTC'), wf.CellTC = wfS.CellTC; else, fnW = fieldnames(wfS); wf.CellTC = wfS.(fnW{1}); end
+        idF = fullfile(output_dir,[filename sfx '_CellIDs.mat']);
+        if exist(idF,'file')
+            idS = load(idF);
+            if isfield(idS,'cellIDs'), ids.cellIDs = idS.cellIDs; else, fnI = fieldnames(idS); ids.cellIDs = idS.(fnI{1}); end
+        else
+            ids.cellIDs = 1:size(wf.CellTC,2);      % older run without saved IDs
+            warning('No %s found - labelling cells 1..N.',idF);
+        end
         cellIDs_use = ids.cellIDs(:)';
         cellLabels = arrayfun(@(j) sprintf('cell%d',j),cellIDs_use,'UniformOutput',false);
         CellTC_use = wf.CellTC;
+        if rerun && ~isempty(timeVec) && numel(timeVec) ~= size(CellTC_use,1)
+            warning('Time stamps (%d) do not match the number of frames (%d) - %s.',numel(timeVec),size(CellTC_use,1), ...
+                'using the first frames / frame index');
+            if numel(timeVec) > size(CellTC_use,1), timeVec = timeVec(1:size(CellTC_use,1)); else, timeVec = []; end
+        end
         if rerun
             % re-run: re-apply the removal saved by the previous run (no questions asked)
             rf = fullfile(output_dir,[filename sfx '_RemovedCells.mat']);
@@ -976,10 +1028,9 @@ else
             try
                 [~,matsDS] = processAndExportPeriods(CellTC_use, IsletPeriods_all{k}, timeVec, '', ...
                     cellLabels, applyNeg1, false);        % compute only, no files
-                nFr = numel(IsletTC_all{k});
                 nT  = size(CellTC_use,1);
                 tvDS = timeVec(:);
-                if isempty(tvDS), tvDS = (1:nFr)'; end
+                if isempty(tvDS), tvDS = (1:nT)'; end
                 if numel(tvDS) < nT, tvDS(end+1:nT,1) = NaN; end
                 dataDS = table((1:nT)',tvDS(1:nT),'VariableNames',{'index','time'});
                 if isfield(matsDS,'detrended')
