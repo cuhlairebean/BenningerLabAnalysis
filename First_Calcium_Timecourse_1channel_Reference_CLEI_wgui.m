@@ -97,7 +97,18 @@ addpath(analysisDir);
 homeDir = char(java.lang.System.getProperty('user.home'));
 bfJar = fullfile(homeDir,'Documents','MATLAB','bioformats_package.jar');
 if ~exist(bfJar,'file'), bfJar = fullfile(univDir,'bioformats_package.jar'); end
-if ~any(strcmp(javaclasspath('-all'),bfJar))
+% A different Bio-Formats/LOCI jar already loaded in this MATLAB session (e.g. the older repo copy from an
+% earlier run) wins over the one added here and can't be unloaded -> MATLAB must be restarted.
+cpAll = javaclasspath('-all');
+oldJars = cpAll(contains(cpAll,'bioformats_package') | contains(cpAll,'loci_tools'));
+oldJars = oldJars(~strcmp(oldJars,bfJar));
+if ~isempty(oldJars)
+    error(['An older Bio-Formats jar is already loaded in this MATLAB session:\n  %s\n' ...
+        'It cannot be unloaded and fails on some .czi files. Please RESTART MATLAB and run this script again.'], ...
+        strjoin(oldJars,sprintf('\n  ')));
+end
+
+if ~any(strcmp(cpAll,bfJar))
     javaaddpath(bfJar);
 end
 fprintf('Bio-Formats jar: %s\n',bfJar);
@@ -107,8 +118,7 @@ if ~license('test','Image_Toolbox') || ~license('test','Statistics_Toolbox')
 end
 
 
-%% Paths for data to analyze                                                                     %%% CHANGE HERE  %%%%%%%%%
-
+%% Paths for data to analyze                                                                     
 % Data folder = the folder currently open in MATLAB (the "Current Folder" bar), added to the path.
 % So just open your data folder in MATLAB and set 'filename' below - no path to type.
 % To use a different folder instead, uncomment the next line and set it:
