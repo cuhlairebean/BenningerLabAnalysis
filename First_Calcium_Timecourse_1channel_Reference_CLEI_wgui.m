@@ -19,14 +19,29 @@
 % Then restart MATLAB, run the script again and choose "Other".
 % To get bug fixes later: choose "New user" again (it pulls the latest code), or run
 % `git pull origin main` in both repo folders.
+%% SETTINGS (edit here)
+% RERUN MODE: set rerun = true to skip all image processing/clicking and rebuild the
+% normalized/frequency outputs from files saved by a previous run (no popups).
+rerun             = false;
+rerunFolder       = '';      % folder containing the previous outputs, e.g. '/Volumes/.../output'
+rerunFilename     = '';      % the name typed at "Input Filename" in the original run
+rerunMultiplyNeg1 = false;   % same choice as the original run
+rerunUser         = 'Other'; % 'Evelyn' or 'Other'
+rerunDrug         = '';      % Evelyn extras (only used if rerunUser = 'Evelyn')
+rerunSex          = '';
+rerunAge          = NaN;
+
 %% HOUSEKEEPING
 close all
-clear all
+clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge
 clc
 % Who is running the analysis? 'Evelyn' also exports the Analysis_dataset_detrended.xlsx workbook
-% (placed after 'clear all' so the answer is not erased)
-user = questdlg('Who is running this analysis?','User','Evelyn','Other','New user','Evelyn');
-if isempty(user), user = 'Other'; end
+if rerun
+    user = rerunUser;
+else
+    user = questdlg('Who is running this analysis?','User','Evelyn','Other','New user','Evelyn');
+    if isempty(user), user = 'Other'; end
+end
 
 %% FIRST-TIME SETUP (only when 'New user' was chosen)
 % Downloads/updates both GitHub repos into ~/Documents/GitHub, downloads the Bio-Formats jar to
@@ -116,6 +131,49 @@ if ~license('test','Image_Toolbox') || ~license('test','Statistics_Toolbox')
     warning('Image Processing Toolbox and/or Statistics and Machine Learning Toolbox not licensed - some steps will fail.');
 end
 
+
+%% RE-RUN: reload everything from a previous run (rerun = true at the top of the script)
+% Skips loading the .czi, drawing islets/cells, time course extraction and all questions. Reads the saved
+% outputs (CaWaveForm, CellIDs, PeriodIndices, IsletTC, RemovedCells, TimeVec) from 'rerunFolder' for the
+% name 'rerunFilename', then goes straight to the detrend / normalize / plot / frequency / export steps.
+if rerun
+    output_dir = rerunFolder;
+    filename = rerunFilename;
+    user = rerunUser;
+    if ~exist(output_dir,'dir'), error('rerunFolder does not exist: %s',output_dir); end
+    wfs = dir(fullfile(output_dir,[filename '_islet*_CaWaveForm.mat']));
+    groupIDs = [];
+    for q = 1:numel(wfs)
+        tokQ = regexp(wfs(q).name,['^' regexptranslate('escape',filename) '_islet(\d+)_CaWaveForm\.mat$'],'tokens','once');
+        if ~isempty(tokQ), groupIDs(end+1) = str2double(tokQ{1}); end %#ok<SAGROW>
+    end
+    groupIDs = sort(unique(groupIDs));
+    if isempty(groupIDs)
+        error(['Re-run: no "%s_islet#_CaWaveForm.mat" files found in:\n  %s\n' ...
+            'Check rerunFolder and rerunFilename (the name you typed at "Input Filename" in the original run).'],filename,output_dir);
+    end
+    nIslets = max(groupIDs);
+    groupSuffix = arrayfun(@(k) sprintf('_islet%d',k),groupIDs,'UniformOutput',false);
+    IsletPeriods_all = cell(1,nIslets);
+    IsletTC_all = cell(1,nIslets);
+    for k = groupIDs
+        pf = fullfile(output_dir,sprintf('%s_islet%d_PeriodIndices.mat',filename,k));
+        if ~exist(pf,'file')
+            error('Re-run: missing %s (the period selection saved by the original run).',pf);
+        end
+        Sp = load(pf,'IsletPeriods');
+        IsletPeriods_all{k} = Sp.IsletPeriods;
+        tcf = fullfile(output_dir,sprintf('%s_islet%d_IsletTC.mat',filename,k));
+        if exist(tcf,'file')
+            Stc = load(tcf,'IsletTC'); IsletTC_all{k} = Stc.IsletTC;
+        else
+            Swf = load(fullfile(output_dir,sprintf('%s_islet%d_CaWaveForm.mat',filename,k)),'CellTC');
+            IsletTC_all{k} = nan(size(Swf.CellTC,1)+1,1);
+        end
+    end
+    OverlayStack = [];
+    fprintf('Re-run of "%s" from %s (islets: %s)\n',filename,output_dir,num2str(groupIDs));
+else
 
 %% Paths for data to analyze                                                                     
 % Data folder = the folder currently open in MATLAB (the "Current Folder" bar), added to the path.
@@ -674,6 +732,8 @@ saveas(LabelFig,[output_dir '/' filename '_CellLabels_byIslet.tif']);
 
 disp('END!')
 
+end   % if rerun ... else (everything from "Paths for data to analyze" to here is skipped when rerun = true)
+
 
 %% PROCESSING: PER-CELL DETREND -> NORMALIZE TO DETRENDED BASELINE -> (x -1) AND EXPORT (one workbook per islet)
 % On the WHOLE matrix (every frame of every cell):
@@ -683,15 +743,44 @@ disp('END!')
 % Output per islet:  <filename>_islet#_normalized.xlsx
 % Low glucose, High glucose, Drug -> labels in the 'condition' column + per-period means.
 % (First phase / Second phase are saved in the _PeriodIndices files for later analysis.)
-runAns = questdlg('Detrend, normalize to baseline and export now?','Processing','Yes','No','Yes');
+if rerun
+    runAns = 'Yes';
+else
+    runAns = questdlg('Detrend, normalize to baseline and export now?','Processing','Yes','No','Yes');
+end
 if ~strcmp(runAns,'Yes')
     disp('Processing skipped - no normalized export.');
 else
-    negAns = questdlg('Multiply the normalized data by -1 (applied last)?','x -1','No','Yes','No');
-    applyNeg1 = strcmp(negAns,'Yes');
+    if rerun
+        applyNeg1 = rerunMultiplyNeg1;     % set at the top of the script
+    else
+        negAns = questdlg('Multiply the normalized data by -1 (applied last)?','x -1','No','Yes','No');
+        applyNeg1 = strcmp(negAns,'Yes');
+    end
     % time stamps of the frames used (czi metadata, else frame interval, else frame index)
     timeVec = [];
-    if exist('frameTimes_all','var') && ~isempty(frameTimes_all) && numel(frameTimes_all) >= ed
+    if rerun
+        % re-run: time stamps saved by the previous run (<name>_TimeVec.mat), else the 'time' column of
+        % that run's normalized workbook
+        tvFile = fullfile(output_dir,[filename '_TimeVec.mat']);
+        if exist(tvFile,'file')
+            Stv = load(tvFile,'timeVec'); timeVec = Stv.timeVec(:);
+        else
+            xlTv = fullfile(output_dir,sprintf('%s%s_normalized.xlsx',filename,groupSuffix{find(groupIDs>0,1)}));
+            if exist(xlTv,'file')
+                try
+                    Ttv = readtable(xlTv,'Sheet','data');
+                    if ismember('time',Ttv.Properties.VariableNames), timeVec = Ttv.time(:); end
+                catch
+                end
+            end
+        end
+        if isempty(timeVec)
+            warning('No saved time stamps found for the re-run - using the frame index as time.');
+        else
+            fprintf('Re-run: loaded %d time stamps.\n',numel(timeVec));
+        end
+    elseif exist('frameTimes_all','var') && ~isempty(frameTimes_all) && numel(frameTimes_all) >= ed
         timeVec = frameTimes_all(st:ed);
     else
         % Paste the time stamps (e.g. a column copied from Excel) OR type one frame interval.
@@ -749,25 +838,36 @@ else
             else
                 timeVec = []; break;            % skip / closed dialog: frame index is used
             end
-        end
     end
+    end
+    % keep the time stamps so a re-run (rerun = true) can reload them without the .czi / pasting
+    if ~rerun, save(fullfile(output_dir,[filename '_TimeVec.mat']),'timeVec'); end
 
     % Extra info for the Analysis_dataset workbook (Evelyn only), asked once per file
+    % (re-run: taken from the rerunDrug / rerunSex / rerunAge settings at the top of the script)
     if strcmp(user,'Evelyn')
-        drgChoice = questdlg('Which drug was used in this file?','DRG_ID','KCl','DZX','None','KCl');
-        if isempty(drgChoice) || strcmp(drgChoice,'None'), drgChoice = ''; end
-        sexChoice = questdlg('Sex of the animal:','Sex','M','F','Unknown','M');
-        if isempty(sexChoice) || strcmp(sexChoice,'Unknown'), sexChoice = ''; end
-        ageAns = inputdlg('Age (leave blank if unknown):','Age',1,{''});
-        ageVal = NaN; if ~isempty(ageAns), ageVal = str2double(ageAns{1}); end
+        if rerun
+            drgChoice = rerunDrug; sexChoice = rerunSex; ageVal = rerunAge;
+        else
+            drgChoice = questdlg('Which drug was used in this file?','DRG_ID','KCl','DZX','None','KCl');
+            if isempty(drgChoice) || strcmp(drgChoice,'None'), drgChoice = ''; end
+            sexChoice = questdlg('Sex of the animal:','Sex','M','F','Unknown','M');
+            if isempty(sexChoice) || strcmp(sexChoice,'Unknown'), sexChoice = ''; end
+            ageAns = inputdlg('Age (leave blank if unknown):','Age',1,{''});
+            ageVal = NaN; if ~isempty(ageAns), ageVal = str2double(ageAns{1}); end
+        end
         gTok = regexp(filename,'(\d+(?:\.\d+)?)\s*mM','tokens','once');   % e.g. ...-2mMF4 -> 2, ..._11mMPC_d1 -> 11
         if isempty(gTok), glucoseVal = NaN; else, glucoseVal = str2double(gTok{1}); end
     end
 
     % Optional: frequency / amplitude / duty cycle of the normalized data (2mM, first phase, second phase, drug)
-    faAns = questdlg('Also calculate frequency, amplitude and duty cycle (2mM / first phase / second phase / drug) and export to Excel?', ...
-        'Frequency analysis','Yes','No','Yes');
-    runFreqAns = strcmp(faAns,'Yes');
+    if rerun
+        runFreqAns = true;
+    else
+        faAns = questdlg('Also calculate frequency, amplitude and duty cycle (2mM / first phase / second phase / drug) and export to Excel?', ...
+            'Frequency analysis','Yes','No','Yes');
+        runFreqAns = strcmp(faAns,'Yes');
+    end
 
     for g = 1:numel(groupIDs)
         k = groupIDs(g);
@@ -778,6 +878,18 @@ else
         cellIDs_use = ids.cellIDs(:)';
         cellLabels = arrayfun(@(j) sprintf('cell%d',j),cellIDs_use,'UniformOutput',false);
         CellTC_use = wf.CellTC;
+        if rerun
+            % re-run: re-apply the removal saved by the previous run (no questions asked)
+            rf = fullfile(output_dir,[filename sfx '_RemovedCells.mat']);
+            if exist(rf,'file')
+                Sr = load(rf,'removedCells');
+                rmMask = ismember(cellLabels,Sr.removedCells);
+                CellTC_use = CellTC_use(:,~rmMask);
+                cellLabels = cellLabels(~rmMask);
+                cellIDs_use = cellIDs_use(~rmMask);
+                fprintf('  Re-applied removal of %d cell(s) from the previous run: %s\n',nnz(rmMask),strjoin(Sr.removedCells,', '));
+            end
+        else
         % Optional: remove outlier cells BEFORE detrending/normalizing (they would skew the trendline)
         % The raw traces are shown FIRST so you can judge whether any cell is an outlier, then you are asked.
         previewFig = figure('Name',['Raw traces ' filename sfx ' - look for outlier cells'],'NumberTitle','off');
@@ -798,6 +910,7 @@ else
                 cellLabels = cellLabels(keepCells);
                 cellIDs_use = cellIDs_use(keepCells);
             end
+        end
         end
         if isempty(CellTC_use) || size(CellTC_use,2) == 0
             warning('All cells removed for %s - skipping.',[filename sfx]); continue;
@@ -898,7 +1011,11 @@ end
 % Uses the red/green channels of the high-res <name>_pre.czi (OverlayStack), lets you draw a
 % background ROI plus green and red cell ROIs, click the red/green ratio threshold, and saves it
 % into an EXISTING Excel file (sheets 'Thresholds' and 'background_values'; row replaced if present).
-thrAns = questdlg('Select the CaMPARI red/green threshold for this file?','CaMPARI threshold','Yes','No','No');
+if rerun
+    thrAns = 'No';   % the threshold needs the _pre.czi + drawing: not part of a re-run
+else
+    thrAns = questdlg('Select the CaMPARI red/green threshold for this file?','CaMPARI threshold','Yes','No','No');
+end
 if strcmp(thrAns,'Yes')
     if isempty(OverlayStack)
         warning('No high-res _pre.czi was loaded - cannot select the threshold.');
