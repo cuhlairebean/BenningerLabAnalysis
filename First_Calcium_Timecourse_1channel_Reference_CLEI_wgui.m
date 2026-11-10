@@ -32,7 +32,7 @@ rerunDrug         = 'KCl';      % Evelyn extras (only used if rerunUser = 'Evely
 rerunSex          = 'F';
 rerunAge          = NaN;
 % --- WHAT TO CHANGE IN THE RERUN (all optional; leave empty = redo everything with the saved choices) ---
-rerunIslets       = [4];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
+rerunIslets       = ['all'];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
 rerunReviewIslets = [];      % islets whose traces open in the click-to-remove window: [2], [1 3] or 'all'
 rerunReselectPeriods = [];   % islets whose periods (baseline, phases...) are re-clicked: [2] or 'all' (previous ones are shown)
 rerunRemoveCells  = {};      % remove specific cells without a window: {islet, [cell numbers]; ...}
@@ -61,11 +61,12 @@ if rerun
         'Re-run mode','Redo','Amend','Redo');
     if isempty(modeAns), return; end
     if strcmp(modeAns,'Amend')
-        allSteps = {'cells','islets','periods','remove'};
+        allSteps = {'cells','islets','periods','remove','campari'};
         descr = {'cells   - draw additional cells','islets  - draw additional islets', ...
-                 'periods - re-click periods (baseline, phases...) for every islet','remove  - click cells to remove (every islet)'};
+                 'periods - re-click periods (baseline, phases...) for every islet','remove  - click cells to remove (every islet)', ...
+                 'campari - re-pick the CaMPARI channels, background (autofluorescence) and red/green threshold'};
         [selIdx,okSel] = listdlg('PromptString','What do you want to amend?','ListString',descr, ...
-            'InitialValue',find(ismember(allSteps,amendSteps)),'ListSize',[460 100],'Name','Amend');
+            'InitialValue',find(ismember(allSteps,amendSteps)),'ListSize',[560 120],'Name','Amend');
         if ~okSel || isempty(selIdx), return; end
         amendSteps = allSteps(selIdx);
         amend = true; rerun = false;          % amend runs through the .czi pipeline below
@@ -915,6 +916,97 @@ disp('END!')
 end   % if rerun ... else (everything from "Paths for data to analyze" to here is skipped when rerun = true)
 
 
+%% CaMPARI RED / GREEN CELL THRESHOLD (optional)
+% Uses the red/green channels of the high-res <name>_pre.czi (OverlayStack), lets you draw a
+% background ROI plus green and red cell ROIs, click the red/green ratio threshold, and saves it
+% into an EXISTING Excel file (sheets 'Thresholds' and 'background_values'; row replaced if present).
+% The per-cell red:green ratio + threshold are saved to <name>_CampariInfo.mat so the colored normalized
+% figures (Evelyn) can be redrawn later without the .czi:
+%   redo  -> reads the saved file;   amend -> recomputes every cell's ratio (new cells included) from the _pre.czi
+campariRatioAll = []; campariThreshold = NaN; campariBg = [NaN NaN]; campariChannels = [NaN NaN];
+campariFile = fullfile(output_dir,[filename '_CampariInfo.mat']);
+if quiet
+    thrAns = 'No';   % the threshold needs the _pre.czi + drawing: not part of a re-run
+    if exist(campariFile,'file')
+        Sc = load(campariFile);
+        campariThreshold = Sc.campariThreshold; campariBg = Sc.campariBg; campariRatioAll = Sc.campariRatioAll;
+        if isfield(Sc,'campariChannels'), campariChannels = Sc.campariChannels; end
+        if amend && ~isempty(OverlayStack) && all(~isnan(campariChannels)) && exist('CellMask_All','var') ...
+                && max(campariChannels) <= size(OverlayStack,3)
+            campariRatioAll = campariCellRatios(CellMask_All, OverlayStack(:,:,campariChannels(2)), ...
+                OverlayStack(:,:,campariChannels(1)), campariBg);
+            save(campariFile,'campariThreshold','campariBg','campariRatioAll','campariChannels');
+            fprintf('Amend: recomputed red:green ratios for %d cells.\n',numel(campariRatioAll));
+        end
+    end
+else
+    thrAns = questdlg('Select the CaMPARI red/green threshold for this file?','CaMPARI threshold','Yes','No','No');
+end
+% amend + 'campari': redo the whole step (channels, background, example cells, threshold) with the _pre.czi
+if amend && ismember('campari',amendSteps), thrAns = 'Yes'; end
+if strcmp(thrAns,'Yes')
+    if isempty(OverlayStack)
+        warning('No high-res _pre.czi was loaded - cannot select the threshold.');
+    else
+        nOv = size(OverlayStack,3);
+        if nOv < 2
+            warning('The _pre.czi has only %d channel - need a red and a green channel.',nOv);
+        else
+            % show every channel and let the user label each one Green / Red / Other
+            [gCh, rCh, chLabels] = classifyChannelsGUI(OverlayStack, filename);
+            if ~isnan(gCh) && ~isnan(rCh)
+                fprintf('Channel %d = GREEN, channel %d = RED\n',gCh,rCh);
+                greenIm = OverlayStack(:,:,gCh); redIm = OverlayStack(:,:,rCh);
+
+                % --- split the _pre.czi by channel: one tiff per channel, named by its label ---
+                % Green -> _green, Red -> _red, anything else -> _ch<number> (raw values, no scaling)
+                to16 = @(im) uint16(min(max(double(im),0),65535));
+                chSfx = cell(1,nOv);
+                for cI = 1:nOv
+                    if strcmp(chLabels{cI},'Green'),     chSfx{cI} = 'green';
+                    elseif strcmp(chLabels{cI},'Red'),   chSfx{cI} = 'red';
+                    else,                                chSfx{cI} = sprintf('ch%d',cI);
+                    end
+                    imwrite(to16(OverlayStack(:,:,cI)),fullfile(output_dir,[filename '_' chSfx{cI} '.tiff']));
+                end
+                % --- per islet: same channels with everything outside that islet set to 0 ---
+                for kI = 1:nIslets
+                    mI = imresize(IsletMask == kI, [size(OverlayStack,1) size(OverlayStack,2)], 'nearest');
+                    for cI = 1:nOv
+                        imwrite(to16(double(OverlayStack(:,:,cI)).*mI), ...
+                            fullfile(output_dir,sprintf('%s_islet%d_%s.tiff',filename,kI,chSfx{cI})));
+                    end
+                end
+                fprintf('Exported %d channel tiff(s) per file/islet (%s) to %s\n',nOv,strjoin(chSfx,', '),output_dir);
+
+                % --- threshold: selected ONCE, written to Excel for every filename_islet# ---
+                [thrFile, thrPath] = uigetfile('*.xlsx','Select the EXISTING threshold Excel file (e.g. CaMPARI_Color_Thresholds.xlsx)');
+                if ~isequal(thrFile,0)
+                    isletKeys = arrayfun(@(kI) sprintf('%s_islet%d',filename,kI),1:nIslets,'UniformOutput',false);
+                    nameAns = inputdlg(['Row keys written to the Excel file (separate with commas):'], ...
+                        'Filenames',1,{strjoin(isletKeys,', ')});
+                    if ~isempty(nameAns) && ~isempty(strtrim(nameAns{1}))
+                        keysOut = strtrim(strsplit(nameAns{1},','));
+                        keysOut = keysOut(~cellfun(@isempty,keysOut));
+                        [campariThreshold, campariBg] = selectCampariThreshold(greenIm,redIm, ...
+                            keysOut,fullfile(thrPath,thrFile));
+                        if ~isnan(campariThreshold) && all(~isnan(campariBg))
+                            % red:green ratio of EVERY traced cell (same formula as the threshold) for the colored figures
+                            campariRatioAll = campariCellRatios(CellMask_All, redIm, greenIm, campariBg);
+                            campariChannels = [gCh rCh];
+                            save(fullfile(output_dir,[filename '_CampariInfo.mat']),'campariThreshold','campariBg','campariRatioAll','campariChannels');
+                            fprintf('Saved per-cell red:green ratios (%d cells) to %s_CampariInfo.mat\n',numel(campariRatioAll),filename);
+                        end
+                    end
+                end
+            else
+                disp('Channel classification cancelled - skipping the threshold.');
+            end
+        end
+    end
+end
+
+
 %% PROCESSING: PER-CELL DETREND -> NORMALIZE (dF/F) TO EACH CELL'S OWN BASELINE -> (x -1) AND EXPORT (one workbook per islet)
 % On the WHOLE matrix (every frame of every cell), cell by cell:
 %   1) detrend    trendline = slope*time + intercept (the cell's OWN regression) is subtracted.
@@ -1193,7 +1285,9 @@ else
         processAndExportPeriods(CellTC_use, IsletPeriods_all{k}, timeVec, ...
             fullfile(output_dir,[filename sfx]), cellLabels, applyNeg1);
 
-        % ---- plot: normalized data, every cell dim grey + mean of cells bold black ----
+        % ---- plot: normalized data, cells semi-transparent (alpha 0.3) + bold opaque mean(s) ----
+        % Evelyn + CaMPARI info available: cells coloured by red:green ratio (green -> magenta), and bold means for
+        % ALL cells (black), RED cells (magenta, ratio >= threshold) and GREEN cells (green, ratio < threshold).
         try
             [~,matsPl] = processAndExportPeriods(CellTC_use, IsletPeriods_all{k}, timeVec, '', ...
                 cellLabels, applyNeg1, false);        % compute only, no files
@@ -1204,16 +1298,32 @@ else
                 else
                     tPl = tPl(1:size(matsPl.normalized,1)); xlab = 'Time (s)';
                 end
-                NormFig = figure('Name',['Normalized traces ' filename sfx]);
-                hold on
-                plot(tPl, matsPl.normalized, 'Color',[0.75 0.75 0.75], 'LineWidth',0.5);
-                plot(tPl, mean(matsPl.normalized,2,'omitnan'), 'k', 'LineWidth',2.5);
-                hold off
-                xlabel(xlab); ylabel('\DeltaF/F');
-                title([filename sfx],'Interpreter','none');
-                box off
+                ratioIslet = [];
+                if strcmp(user,'Evelyn') && ~isempty(campariRatioAll) && ~isnan(campariThreshold)
+                    ratioIslet = nan(1,numel(cellIDs_use));
+                    okId = cellIDs_use >= 1 & cellIDs_use <= numel(campariRatioAll);
+                    ratioIslet(okId) = campariRatioAll(cellIDs_use(okId));
+                end
+                [NormFig, cellClass, clsMeans] = plotNormalizedTraces(tPl, matsPl.normalized, xlab, [filename sfx], ratioIslet, campariThreshold);
                 saveas(NormFig, fullfile(output_dir,[filename sfx '_NormalizedTraces.tif']));
                 savefig(NormFig, fullfile(output_dir,[filename sfx '_NormalizedTraces.fig']));
+                if ~isempty(ratioIslet)
+                    % add the three mean traces to the 'data' sheet and list every cell's class in 'Cell classes'
+                    xlN = fullfile(output_dir,[filename sfx '_normalized.xlsx']);
+                    try
+                        Td = readtable(xlN,'Sheet','data');
+                        Td.mean_all = clsMeans.all(1:height(Td));
+                        Td.mean_red = clsMeans.red(1:height(Td));
+                        Td.mean_green = clsMeans.green(1:height(Td));
+                        writetable(Td,xlN,'Sheet','data');
+                        writetable(table(cellLabels(:),ratioIslet(:),cellClass(:), ...
+                            'VariableNames',{'Cell','RedGreenRatio','Class'}),xlN,'Sheet','Cell classes');
+                        fprintf('  CaMPARI: %d red, %d green cell(s) (threshold %.3g); means added to %s\n', ...
+                            nnz(strcmp(cellClass,'red')),nnz(strcmp(cellClass,'green')),campariThreshold,[filename sfx '_normalized.xlsx']);
+                    catch ME2
+                        warning('Could not add the CaMPARI means to %s (%s).',xlN,ME2.message);
+                    end
+                end
             end
         catch ME
             warning('Could not plot normalized traces for %s (%s).',[filename sfx],ME.message);
@@ -1270,68 +1380,3 @@ else
         end
     end
 end
-
-%% CaMPARI RED / GREEN CELL THRESHOLD (optional)
-% Uses the red/green channels of the high-res <name>_pre.czi (OverlayStack), lets you draw a
-% background ROI plus green and red cell ROIs, click the red/green ratio threshold, and saves it
-% into an EXISTING Excel file (sheets 'Thresholds' and 'background_values'; row replaced if present).
-if quiet
-    thrAns = 'No';   % the threshold needs the _pre.czi + drawing: not part of a re-run
-else
-    thrAns = questdlg('Select the CaMPARI red/green threshold for this file?','CaMPARI threshold','Yes','No','No');
-end
-if strcmp(thrAns,'Yes')
-    if isempty(OverlayStack)
-        warning('No high-res _pre.czi was loaded - cannot select the threshold.');
-    else
-        nOv = size(OverlayStack,3);
-        if nOv < 2
-            warning('The _pre.czi has only %d channel - need a red and a green channel.',nOv);
-        else
-            % show every channel and let the user label each one Green / Red / Other
-            [gCh, rCh, chLabels] = classifyChannelsGUI(OverlayStack, filename);
-            if ~isnan(gCh) && ~isnan(rCh)
-                fprintf('Channel %d = GREEN, channel %d = RED\n',gCh,rCh);
-                greenIm = OverlayStack(:,:,gCh); redIm = OverlayStack(:,:,rCh);
-
-                % --- split the _pre.czi by channel: one tiff per channel, named by its label ---
-                % Green -> _green, Red -> _red, anything else -> _ch<number> (raw values, no scaling)
-                to16 = @(im) uint16(min(max(double(im),0),65535));
-                chSfx = cell(1,nOv);
-                for cI = 1:nOv
-                    if strcmp(chLabels{cI},'Green'),     chSfx{cI} = 'green';
-                    elseif strcmp(chLabels{cI},'Red'),   chSfx{cI} = 'red';
-                    else,                                chSfx{cI} = sprintf('ch%d',cI);
-                    end
-                    imwrite(to16(OverlayStack(:,:,cI)),fullfile(output_dir,[filename '_' chSfx{cI} '.tiff']));
-                end
-                % --- per islet: same channels with everything outside that islet set to 0 ---
-                for kI = 1:nIslets
-                    mI = imresize(IsletMask == kI, [size(OverlayStack,1) size(OverlayStack,2)], 'nearest');
-                    for cI = 1:nOv
-                        imwrite(to16(double(OverlayStack(:,:,cI)).*mI), ...
-                            fullfile(output_dir,sprintf('%s_islet%d_%s.tiff',filename,kI,chSfx{cI})));
-                    end
-                end
-                fprintf('Exported %d channel tiff(s) per file/islet (%s) to %s\n',nOv,strjoin(chSfx,', '),output_dir);
-
-                % --- threshold: selected ONCE, written to Excel for every filename_islet# ---
-                [thrFile, thrPath] = uigetfile('*.xlsx','Select the EXISTING threshold Excel file (e.g. CaMPARI_Color_Thresholds.xlsx)');
-                if ~isequal(thrFile,0)
-                    isletKeys = arrayfun(@(kI) sprintf('%s_islet%d',filename,kI),1:nIslets,'UniformOutput',false);
-                    nameAns = inputdlg(['Row keys written to the Excel file (separate with commas):'], ...
-                        'Filenames',1,{strjoin(isletKeys,', ')});
-                    if ~isempty(nameAns) && ~isempty(strtrim(nameAns{1}))
-                        keysOut = strtrim(strsplit(nameAns{1},','));
-                        keysOut = keysOut(~cellfun(@isempty,keysOut));
-                        campariThreshold = selectCampariThreshold(greenIm,redIm, ...
-                            keysOut,fullfile(thrPath,thrFile));
-                    end
-                end
-            else
-                disp('Channel classification cancelled - skipping the threshold.');
-            end
-        end
-    end
-end
-
