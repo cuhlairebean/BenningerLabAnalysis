@@ -8,8 +8,8 @@
 % matrices per islet
 
 
-% NEED: filename.czi and filename_pre.czi for this code to work, 
-
+% NEED: filename.czi and filename_pre.czi for this code to work
+%_pre is a high quality image acquire
 
 %% FIRST TIME USING THIS CODE?
 % Run this script and choose "New user" in the first dialog. It downloads both GitHub repos
@@ -169,7 +169,7 @@ end
 
 % Number of channels in file - important if its multichannel or ref.channel
                                                                                                   %  %%% CHANGE HERE  %%%%%%%%%
-howmanychannel =1;
+howmanychannel =2;
 
 pics=R{1};
 pics=pics(:,1);
@@ -185,10 +185,10 @@ images=double(IMG); % converts images to double precision
 % Uncomment out the channel you want to quantify, comment out the rest.                         %%% CHANGE HERE  %%%%%%%%%
 
 %channel 1 Red/fura
-images = images(:,:,1:howmanychannel:end);
+%images = images(:,:,1:howmanychannel:end);
 
 %Channel 2 Lux/Green
-%images = images(:,:,2:howmanychannel:end);
+images = images(:,:,2:howmanychannel:end);
 
 %Channel 3 Green
 %images = images(:,:,3:howmanychannel:end);
@@ -779,8 +779,15 @@ else
         cellLabels = arrayfun(@(j) sprintf('cell%d',j),cellIDs_use,'UniformOutput',false);
         CellTC_use = wf.CellTC;
         % Optional: remove outlier cells BEFORE detrending/normalizing (they would skew the trendline)
-        rmAns = questdlg(sprintf('Review %s for outlier cells to remove?',[filename sfx]), ...
-            'Remove cells','Yes','No','Yes');
+        % The raw traces are shown FIRST so you can judge whether any cell is an outlier, then you are asked.
+        previewFig = figure('Name',['Raw traces ' filename sfx ' - look for outlier cells'],'NumberTitle','off');
+        plot(CellTC_use,'Color',[0.3 0.3 0.3 0.6]);
+        xlabel('Frame index'); ylabel('Intensity');
+        title([filename sfx ' | ' num2str(size(CellTC_use,2)) ' cells'],'Interpreter','none');
+        drawnow
+        rmAns = questdlg(sprintf('Looking at the traces in the figure: remove any outlier cells from %s?\n(Yes opens the click-to-remove window.)',[filename sfx]), ...
+            'Remove cells','Yes','No','No');
+        if isvalid(previewFig), close(previewFig); end
         if strcmp(rmAns,'Yes')
             keepCells = removeCellsGUI(CellTC_use, cellLabels, [filename sfx]);
             if any(~keepCells)
