@@ -68,10 +68,16 @@ if ~exist(univDir,'dir')
 end
 addpath(univDir);
 addpath(analysisDir);
-bfJar = fullfile(univDir,'bioformats_package.jar');   % Bio-Formats jar shipped in the repo
+% Bio-Formats jar: a newer copy in ~/Documents/MATLAB is preferred (newer .czi files need a recent
+% version); otherwise the older copy shipped in the repo is used.
+% Newest jar: https://www.openmicroscopy.org/bio-formats/downloads/  (bioformats_package.jar)
+homeDir = char(java.lang.System.getProperty('user.home'));
+bfJar = fullfile(homeDir,'Documents','MATLAB','bioformats_package.jar');
+if ~exist(bfJar,'file'), bfJar = fullfile(univDir,'bioformats_package.jar'); end
 if ~any(strcmp(javaclasspath('-all'),bfJar))
     javaaddpath(bfJar);
 end
+fprintf('Bio-Formats jar: %s\n',bfJar);
 % Required toolboxes
 if ~license('test','Image_Toolbox') || ~license('test','Statistics_Toolbox')
     warning('Image Processing Toolbox and/or Statistics and Machine Learning Toolbox not licensed - some steps will fail.');
