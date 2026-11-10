@@ -6,7 +6,11 @@
 % For multiple channels: skip down to 'Masking Islet > For Colocalization'
 % and change the parameters as needed, it also normalizes and generates
 % matrices per islet
-%need: filename.czi and filename_pre.czi for this code to work, 
+
+
+% NEED: filename.czi and filename_pre.czi for this code to work, 
+
+
 %% ONE-TIME SETUP (new users): copy and paste this into the MATLAB Command Window
 % -------------------------------------------------------------------------
 % (requires git: https://git-scm.com/downloads; on a Mac it installs with Xcode command line tools)
@@ -74,7 +78,7 @@ if ~license('test','Image_Toolbox') || ~license('test','Statistics_Toolbox')
 end
 
 
-%% Paths for data to analyze
+%% Paths for data to analyze                                                                     %%% CHANGE HERE  %%%%%%%%%
 
 filepath = ('/Volumes/ESD-USB/Calcium_imaging/10_21_26/');%Volumes
 
@@ -87,7 +91,7 @@ filepath = ('/Volumes/ESD-USB/Calcium_imaging/10_21_26/');%Volumes
 %  disp('Select Calcium Imaging File');
 %  R = bfopen('Select Calcium Imaging File');
 
-% 2. INPUT FILE NAME
+% 2. INPUT FILE NAME                                                                            %%% CHANGE HERE  %%%%%%%%%
 
 filename = ['10-29-26_5mMPC__d1.czi'];
 czi_file = filename; % raw time-series file; 'filename' is later replaced by the output name you type
@@ -97,6 +101,7 @@ czi_file = filename; % raw time-series file; 'filename' is later replaced by the
 R = bfopen(czi_file); % Uses bfopen program to open .czi/.lsm image files
 
 % Number of channels in file - important if its multichannel or ref.channel
+                                                                                                  %  %%% CHANGE HERE  %%%%%%%%%
 howmanychannel =1;
 
 pics=R{1};
@@ -110,7 +115,7 @@ images=double(IMG); % converts images to double precision
 
 
 %%%%%%%%%%%%
-% Uncomment out the channel you want to quantify, comment out the rest.
+% Uncomment out the channel you want to quantify, comment out the rest.                         %%% CHANGE HERE  %%%%%%%%%
 
 %channel 1 Red/fura
 images = images(:,:,1:howmanychannel:end);
@@ -142,7 +147,7 @@ filename = input('Input Filename  ','s');
 % This block converts the 3rd dimension of array into timecourse for
 % later reference
 
-st=1; % STARTING FRAME: Change this per sample if needed
+st=1; % STARTING FRAME: Change this per sample if needed                                
 %st = 100;
 [xx, yy, zz] = size(images(:,:,:));
 % ENDING FRAME: Change this per sample if needed
@@ -153,7 +158,7 @@ T=st:1:ed;
 
 images=images(:,:,st:ed);
 % Define the start and end frames for your reference image
-start_frame =336;
+start_frame =336;                                                                                         %%% CHANGE HERE  %%%%%%%%%
 end_frame = 1000;
 
 % Check to ensure the selected range is valid
