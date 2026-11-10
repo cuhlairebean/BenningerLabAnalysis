@@ -799,10 +799,20 @@ else
                 cellIDs_use = cellIDs_use(keepCells);
             end
         end
-        if isempty(CellTC_use)
+        if isempty(CellTC_use) || size(CellTC_use,2) == 0
             warning('All cells removed for %s - skipping.',[filename sfx]); continue;
         end
-        fprintf('Processing %s%s\n',filename,sfx);
+        % sanity check: exactly one valid text label per remaining cell column
+        if ~iscellstr(cellLabels) || numel(cellLabels) ~= size(CellTC_use,2) || any(cellfun(@isempty,cellLabels))
+            warning('Cell labels did not match the %d remaining cell column(s) - regenerating them.',size(CellTC_use,2));
+            if numel(cellIDs_use) == size(CellTC_use,2)
+                cellLabels = arrayfun(@(j) sprintf('cell%d',j),cellIDs_use,'UniformOutput',false);
+            else
+                cellLabels = arrayfun(@(j) sprintf('cell%d',j),1:size(CellTC_use,2),'UniformOutput',false);
+            end
+        end
+        cellLabels = cellLabels(:)';
+        fprintf('Processing %s%s (%d cells, %d frames)\n',filename,sfx,size(CellTC_use,2),size(CellTC_use,1));
         processAndExportPeriods(CellTC_use, IsletPeriods_all{k}, timeVec, ...
             fullfile(output_dir,[filename sfx]), cellLabels, applyNeg1);
 
