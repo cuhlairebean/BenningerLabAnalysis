@@ -109,7 +109,13 @@ end
 
 %% Paths for data to analyze                                                                     %%% CHANGE HERE  %%%%%%%%%
 
-filepath = ('/Volumes/ESD-USB/Calcium_imaging/10_21_26/');%Volumes
+% Data folder = the folder currently open in MATLAB (the "Current Folder" bar), added to the path.
+% So just open your data folder in MATLAB and set 'filename' below - no path to type.
+% To use a different folder instead, uncomment the next line and set it:
+% filepath = '/Volumes/ESD-USB/Calcium_imaging/10_29_26/';
+if ~exist('filepath','var') || isempty(filepath), filepath = pwd; end
+addpath(filepath);
+
 
 %% LOAD CALCIUM IMAGE FILE
 
