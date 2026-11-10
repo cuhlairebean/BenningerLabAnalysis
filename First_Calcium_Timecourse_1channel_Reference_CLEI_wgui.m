@@ -123,7 +123,22 @@ filepath = ('/Volumes/ESD-USB/Calcium_imaging/10_21_26/');%Volumes
 % 2. INPUT FILE NAME                                                                            %%% CHANGE HERE  %%%%%%%%%
 
 filename = ['10-29-26_5mMPC__d1.czi'];
-czi_file = filename; % raw time-series file; 'filename' is later replaced by the output name you type
+% raw time-series file; 'filename' is later replaced by the output name you type.
+% The file is looked for in 'filepath' (above) first, then in the current folder / as a full path.
+if exist(fullfile(filepath,filename),'file') == 2
+    czi_file = fullfile(filepath,filename);
+elseif exist(filename,'file') == 2
+    czi_file = filename;
+else
+    error(['Could not find the .czi file "%s".\nLooked in: %s\nand the current folder: %s\n' ...
+        'Check that the drive is connected and that "filepath" and "filename" above are correct.'], ...
+        filename,filepath,pwd);
+end
+czi_info = dir(czi_file);
+fprintf('Opening %s (%.1f MB)\n',czi_file,czi_info(1).bytes/1e6);
+if czi_info(1).bytes < 1e6
+    warning('This .czi is very small (%.1f MB) - it may be incomplete/corrupted (interrupted acquisition or copy).',czi_info(1).bytes/1e6);
+end
 
 %https://www.openmicroscopy.org/bio-formats/downloads/
 
