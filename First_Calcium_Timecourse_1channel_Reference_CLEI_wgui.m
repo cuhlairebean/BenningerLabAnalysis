@@ -40,20 +40,34 @@ rerunRemoveCells  = {};      % remove specific cells without a window: {islet, [
 rerunRestoreIslets = [];     % islets whose previously removed cells are put back first, e.g. [2] or 'all'
 % Removals are ADDED to the ones saved by the previous run and saved again (_RemovedCells.mat).
 % Only the islets in rerunIslets are re-exported; every output file of those islets is overwritten.
-% (Adding/redrawing islet or cell MASKS needs the raw .czi - run the normal pipeline (rerun = false) for that;
-%  its "import previous islet mask / periods" buttons reuse your earlier selections.)
+%
+% AMEND MODE: set amend = true (and rerun = false) to ADD to a previous run using the raw .czi:
+% add islets / add cells / re-click periods / remove cells. Run it from the folder that holds the .czi
+% (the outputs of the previous run are looked for there too, or in amendFolder). Earlier masks, periods
+% and removals are loaded automatically (no import popups); earlier cell numbers never change.
+% Settings of the rerun block above are reused (rerunMultiplyNeg1, rerunUser, rerunDrug, rerunSex, rerunAge,
+% rerunIslets, rerunRemoveCells ...). The background-removal click is skipped (plain average image is shown).
+amend         = false;
+amendFolder   = '';              % '' = current folder
+amendFilename = '';              % output name used in the previous run; '' = auto-detect from *_IsletMask.mat
+amendCzi      = '';              % '' = search the folder for the matching .czi (asks only if unclear)
+amendSteps    = {'cells'};       % any of: 'islets' (draw extra islets), 'cells' (draw extra cells),
+                                 %         'periods' (re-click periods, all islets), 'remove' (click-to-remove window, all islets)
+if amend && rerun, error('Set only one of rerun / amend to true.'); end
 
 %% HOUSEKEEPING
 close all
-clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunReselectPeriods rerunRemoveCells rerunRestoreIslets
+clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunReselectPeriods rerunRemoveCells rerunRestoreIslets amend amendFolder amendFilename amendCzi amendSteps
 clc
 % Who is running the analysis? 'Evelyn' also exports the Analysis_dataset_detrended.xlsx workbook
-if rerun
+if rerun || amend
     user = rerunUser;
 else
     user = questdlg('Who is running this analysis?','User','Evelyn','Other','New user','Evelyn');
     if isempty(user), user = 'Other'; end
 end
+quiet = rerun || amend;   % no popups: choices come from the settings above / saved files
+if amend && ismember('remove',amendSteps) && isempty(rerunReviewIslets), rerunReviewIslets = 'all'; end
 
 %% FIRST-TIME SETUP (only when 'New user' was chosen)
 % Downloads/updates both GitHub repos into ~/Documents/GitHub, downloads the Bio-Formats jar to
@@ -249,6 +263,38 @@ addpath(filepath);
 filename = ['10-29-26_5mMPC__d1.czi'];
 % raw time-series file; 'filename' is later replaced by the output name you type.
 % The file is looked for in 'filepath' (above) first, then in the current folder / as a full path.
+if amend
+    % AMEND: the raw .czi is searched in the current folder (or amendFolder), next to the previous outputs
+    amendDir = amendFolder; if isempty(amendDir), amendDir = pwd; end
+    filepath = amendDir; addpath(filepath);
+    if isempty(amendFilename)
+        imfL = dir(fullfile(amendDir,'*_IsletMask.mat'));
+        nmL = unique(regexprep({imfL.name},'_IsletMask\.mat$',''));
+        if numel(nmL) == 1
+            amendFilename = nmL{1};
+        else
+            error('Amend: set amendFilename (output name of the previous run). *_IsletMask.mat found in %s: %s',amendDir,strjoin(nmL,', '));
+        end
+    end
+    if ~isempty(amendCzi)
+        filename = amendCzi;
+    else
+        cz = dir(fullfile(amendDir,'*.czi'));
+        cz = cz(~cellfun(@(s) ~isempty(regexp(s,'[_]?[Pp]re\d*\.czi$','once')),{cz.name}));   % ignore the _pre overlays
+        cnames = {cz.name};
+        iExact = find(strcmpi(cnames,[amendFilename '.czi']),1);
+        if ~isempty(iExact)
+            filename = cnames{iExact};
+        elseif numel(cnames) == 1
+            filename = cnames{1};
+        else
+            [cf_,cp_] = uigetfile('*.czi','Select the raw time-series .czi to amend',[amendDir filesep]);
+            if isequal(cf_,0), error('Amend cancelled: no .czi selected.'); end
+            filename = fullfile(cp_,cf_);
+        end
+    end
+    fprintf('Amend: using %s\n',filename);
+end
 if exist(fullfile(filepath,filename),'file') == 2
     czi_file = fullfile(filepath,filename);
 elseif exist(filename,'file') == 2
@@ -315,9 +361,15 @@ clear pics R IMG;
 clear omeMeta;
 
 % SELECT LOCATION FOR SAVING FILES
-disp('Select Folder for Output Directory');
-output_dir = uigetdir;
-filename = input('Input Filename  ','s');
+if amend
+    output_dir = amendDir;
+    filename = amendFilename;
+    fprintf('Amend: outputs of "%s" in %s\n',filename,output_dir);
+else
+    disp('Select Folder for Output Directory');
+    output_dir = uigetdir;
+    filename = input('Input Filename  ','s');
+end
 
 %% CODE TO MODIFY TIME COURSES
 % This block converts the 3rd dimension of array into timecourse for
@@ -367,6 +419,11 @@ HSV(:,:,3) = ImAvn.^0.8; %evens out intensity across images
 HSV(:,:,1) = 0.3333;%converts image to green image
 RGB = hsv2rgb(HSV); %converts to rgb image
 
+if amend
+    % amend: no background-removal click; the plain average image is used for drawing
+    ImGray = mat2gray(ImAv);
+    NoSigFig = figure('Visible','off');
+else
 OGFig = figure(1);
 imshow(RGB);
 
@@ -393,6 +450,7 @@ NoSigFig = figure('Name','Background Removed; Draw ROI around Entire Islet');
 imagesc(ImGray);
 colormap(NoSigFig, 'jet');
 clear OGFig GrayFig;
+end   % if amend ... else (background removal)
 
 %% MASKING ISLET
 
@@ -423,30 +481,40 @@ end
 % User draws an ROI around EACH islet. Islets are numbered in the order drawn
 % (islet1, islet2, ...). Every islet gets its own output files with '_islet#'.
 % To rerun with the updated code you can instead IMPORT a previous islet mask.
-isletAnswer = questdlg('Import a previous islet mask or draw new islets?', ...
-    'Islet masks','Import islet mask','Draw new islets','Draw new islets');
 IsletMask = [];
-if strcmp(isletAnswer,'Import islet mask')
-    [imf, imp] = uigetfile('*_IsletMask.mat','Select previous islet mask (*_IsletMask.mat)',[output_dir '/']);
-    if ~isequal(imf,0)
-        S_imp = load(fullfile(imp,imf));
-        if isfield(S_imp,'IsletMask') && isequal(size(S_imp.IsletMask),[xx yy])
-            IsletMask = S_imp.IsletMask;
-            disp(['Imported islet mask: ' imf]);
-        else
-            warning('That file has no IsletMask matching this image size - drawing new islets instead.');
+nIsletsOld = 0;
+if amend
+    % amend: the saved islet mask is loaded without asking; 'islets' in amendSteps lets you draw extra ones
+    S_imp = load([output_dir '/' filename '_IsletMask.mat']);
+    if ~isequal(size(S_imp.IsletMask),[xx yy]), error('Saved IsletMask size does not match this image.'); end
+    IsletMask = S_imp.IsletMask; nIsletsOld = max(IsletMask(:));
+    fprintf('Amend: loaded %d islet(s).\n',nIsletsOld);
+else
+    isletAnswer = questdlg('Import a previous islet mask or draw new islets?', ...
+        'Islet masks','Import islet mask','Draw new islets','Draw new islets');
+    if strcmp(isletAnswer,'Import islet mask')
+        [imf, imp] = uigetfile('*_IsletMask.mat','Select previous islet mask (*_IsletMask.mat)',[output_dir '/']);
+        if ~isequal(imf,0)
+            S_imp = load(fullfile(imp,imf));
+            if isfield(S_imp,'IsletMask') && isequal(size(S_imp.IsletMask),[xx yy])
+                IsletMask = S_imp.IsletMask;
+                disp(['Imported islet mask: ' imf]);
+            else
+                warning('That file has no IsletMask matching this image size - drawing new islets instead.');
+            end
         end
     end
 end
 close(NoSigFig); % old static background-removed figure; the GUI shows the same image
-if isempty(IsletMask)
-    disp('Draw ROI around each islet (press DONE when finished)');
+if isempty(IsletMask) || (amend && ismember('islets',amendSteps))
+    disp('Draw ROI around each islet (press Enter when finished)');
     [IsletMask, isletInfo] = drawROIsGUI(ImGray, ...
         'Name','Islet', ...
-        'Title','Background Removed; Draw ROI around EACH islet (numbered in order drawn)', ...
+        'Title','Draw ROI around EACH islet (numbered in order drawn; earlier islets are kept)', ...
         'Colormap','jet', ...
         'Overlay',OverlayStack, ...
-        'ChannelNames',OverlayChannelNames);
+        'ChannelNames',OverlayChannelNames, ...
+        'ExistingLabels',IsletMask);
 end
 nIslets = max(IsletMask(:));
 if nIslets == 0
@@ -478,9 +546,31 @@ for k = 1:nIslets
     % Baseline, First phase and Second phase are selected separately for every islet.
     initialPeriods = [];
     prevFile = [output_dir '/' filename isletTag '_PeriodIndices.mat'];
+    skipImp = false;
+    if amend && k <= nIsletsOld && exist(prevFile,'file')
+        % amend: this islet already has saved periods -> load them, keep them unless 'periods' is in amendSteps
+        Sp = load(prevFile); fnP = fieldnames(Sp);
+        for q = 1:numel(fnP)
+            v = Sp.(fnP{q});
+            if isstruct(v) && all(isfield(v,{'name','start','end'})), IsletPeriods = v; break; end
+        end
+        IsletPeriods_all{k} = IsletPeriods;
+        if k == 1, sharedCond = [[IsletPeriods(1:3).start]', [IsletPeriods(1:3).end]']; end
+        if ~ismember('periods',amendSteps)
+            close(IsletTCfig); continue;
+        end
+        initialPeriods = loadPreviousPeriods(prevFile,periodNames);
+        skipImp = true;
+    end
     if exist(prevFile,'file'), impHint = ' (a previous file for this islet exists)'; else, impHint = ''; end
-    impChoice = questdlg(sprintf('Islet %d: import previous period selections?%s',k,impHint), ...
-        'Import period indices','Import previous','Select new','Select new');
+    if skipImp
+        impChoice = 'Skip';
+    elseif amend
+        impChoice = 'Select new';        % new islet in amend mode: no question, just click its periods
+    else
+        impChoice = questdlg(sprintf('Islet %d: import previous period selections?%s',k,impHint), ...
+            'Import period indices','Import previous','Select new','Select new');
+    end
     if strcmp(impChoice,'Import previous')
         if exist(prevFile,'file'), startFile = prevFile; else, startFile = [output_dir '/']; end
         [pf, pp] = uigetfile({'*_PeriodIndices.mat;*_PeriodRanges.csv','Period files'}, ...
@@ -499,6 +589,7 @@ for k = 1:nIslets
         if isempty(initialPeriods), initialPeriods = nan(numel(periodNames),2); pickMask = false(1,numel(periodNames)); pickMask(4:6) = true;
         else, pickMask = false(1,numel(periodNames)); end
         initialPeriods(1:3,:) = sharedCond;              % same low/high/drug as islet 1
+        if skipImp, pickMask = []; end                   % amend + 'periods': re-click all six, previous shown
     end
     [IsletPeriods, PeriodIndices] = selectTimeRanges(IsletTC, periodNames, ...
         sprintf('%s islet%d',filename,k), IsletTCfig, initialPeriods, pickMask);
@@ -554,12 +645,14 @@ clear StartMaskStack
  %#ROIs are saved in "CellMask" array and called back to throughout analysis
  %#Follow the prompts in the Command Window
 
-InitialRefFig = figure; % Give the figure a handle so we can apply colormap
-imshow(ref_pic)
-colormap(InitialRefFig, 'jet'); % Apply 'jet' colormap here
-pause(3)
-close(InitialRefFig) % Close the figure using its handle
-clear InitialRefFig
+if ~amend
+    InitialRefFig = figure; % Give the figure a handle so we can apply colormap
+    imshow(ref_pic)
+    colormap(InitialRefFig, 'jet'); % Apply 'jet' colormap here
+    pause(3)
+    close(InitialRefFig) % Close the figure using its handle
+    clear InitialRefFig
+end
 %figure, imshow(ref_pic)
 %pause(3)
 
@@ -567,12 +660,27 @@ clear InitialRefFig
 
 CellMask = double(zeros(xx,yy));
 numcells = 1;
+existingCells = [];
 
-answer = questdlg('Import Mask Set or Draw New Masks?', ...
-    'Import Dialogue', ...
-    'Import Mask Set','Draw New Masks','Draw New Masks');
+if amend
+    % amend: load the cells of the previous run (global mask, numbered in draw order)
+    mf = [output_dir '/' filename '_Masks.mat'];
+    if ~exist(mf,'file'), error('Amend: %s not found (the combined cell mask of the previous run).',mf); end
+    Sm = load(mf); fnM = fieldnames(Sm);
+    if isfield(Sm,'CellMask'), existingCells = Sm.CellMask; else, existingCells = Sm.(fnM{1}); end
+    CellMask = existingCells; numcells = max(existingCells(:));
+    fprintf('Amend: loaded %d existing cell(s).\n',numcells);
+    if ismember('cells',amendSteps), answer = 'Draw New Masks'; else, answer = 'Keep existing'; end
+else
+    answer = questdlg('Import Mask Set or Draw New Masks?', ...
+        'Import Dialogue', ...
+        'Import Mask Set','Draw New Masks','Draw New Masks');
+end
 
 switch answer
+    case 'Keep existing'
+        disp('Amend: cell masks unchanged.')
+
     case 'Import Mask Set'
         disp('Importing Mask Set')
         disp('Please Select Mask File');
@@ -591,6 +699,7 @@ switch answer
         disp(answer)
         % Reusable GUI: zoom, brightness/contrast, translucent hi-res .czi overlay.
         % Each cell is checked against IsletMask and gets that islet's number.
+        % (amend: earlier cells are shown numbered and kept; new cells continue the numbering)
         [CellMask, cellInfo] = drawROIsGUI(ref_pic, ...
             'Name','Cell', ...
             'Title','Draw ROIs Around Cells of Interest (islet outlines shown dashed)', ...
@@ -598,7 +707,8 @@ switch answer
             'Overlay',OverlayStack, ...
             'ChannelNames',OverlayChannelNames, ...
             'ParentMask',IsletMask, ...
-            'ParentName','Islet');
+            'ParentName','Islet', ...
+            'ExistingLabels',existingCells);
         numcells = max(CellMask(:));
 
         save([output_dir '/' filename '_' 'Masks' '.mat'],'CellMask'); %Saves CellMask array
@@ -794,7 +904,7 @@ end   % if rerun ... else (everything from "Paths for data to analyze" to here i
 % Output per islet:  <filename>_islet#_normalized.xlsx
 % Low glucose, High glucose, Drug -> labels in the 'condition' column + per-period means.
 % (First phase / Second phase are saved in the _PeriodIndices files for later analysis.)
-if rerun
+if quiet
     runAns = 'Yes';
 else
     runAns = questdlg('Detrend, normalize to baseline and export now?','Processing','Yes','No','Yes');
@@ -802,7 +912,7 @@ end
 if ~strcmp(runAns,'Yes')
     disp('Processing skipped - no normalized export.');
 else
-    if rerun
+    if quiet
         applyNeg1 = rerunMultiplyNeg1;     % set at the top of the script
     else
         negAns = questdlg('Multiply the normalized data by -1 (applied last)?','x -1','No','Yes','No');
@@ -897,7 +1007,7 @@ else
     % Extra info for the Analysis_dataset workbook (Evelyn only), asked once per file
     % (re-run: taken from the rerunDrug / rerunSex / rerunAge settings at the top of the script)
     if strcmp(user,'Evelyn')
-        if rerun
+        if quiet
             drgChoice = rerunDrug; sexChoice = rerunSex; ageVal = rerunAge;
         else
             drgChoice = questdlg('Which drug was used in this file?','DRG_ID','KCl','DZX','None','KCl');
@@ -912,7 +1022,7 @@ else
     end
 
     % Optional: frequency / amplitude / duty cycle of the normalized data (2mM, first phase, second phase, drug)
-    if rerun
+    if quiet
         runFreqAns = true;
     else
         faAns = questdlg('Also calculate frequency, amplitude and duty cycle (2mM / first phase / second phase / drug) and export to Excel?', ...
@@ -944,7 +1054,7 @@ else
                 'using the first frames / frame index');
             if numel(timeVec) > size(CellTC_use,1), timeVec = timeVec(1:size(CellTC_use,1)); else, timeVec = []; end
         end
-        if rerun
+        if quiet
             % re-run: optionally restrict to some islets
             if ~isempty(rerunIslets) && ~inList(rerunIslets,k), continue; end
             % start from the removal saved by the previous run (unless restored)
@@ -1124,7 +1234,7 @@ end
 % Uses the red/green channels of the high-res <name>_pre.czi (OverlayStack), lets you draw a
 % background ROI plus green and red cell ROIs, click the red/green ratio threshold, and saves it
 % into an EXISTING Excel file (sheets 'Thresholds' and 'background_values'; row replaced if present).
-if rerun
+if quiet
     thrAns = 'No';   % the threshold needs the _pre.czi + drawing: not part of a re-run
 else
     thrAns = questdlg('Select the CaMPARI red/green threshold for this file?','CaMPARI threshold','Yes','No','No');

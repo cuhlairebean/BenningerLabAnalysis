@@ -94,3 +94,10 @@ WS_FrstResp_Wave_Analysis_Claire.m
 Input: czi
 Output: first responder excel sheet – requires additional analysis to rank cells
 ![image](https://github.com/user-attachments/assets/06ec6662-fd30-4be2-aac4-9b918ea94052)
+
+## Re-running or amending a previous analysis
+
+Settings are at the top of the wgui script.
+
+- **rerun = true**: rebuild exports from saved files (no .czi needed, no popups). Options: rerunIslets, rerunReviewIslets (click-to-remove window, or all), rerunReselectPeriods, rerunRemoveCells, rerunRestoreIslets.
+- **amend = true** (rerun = false): run from the folder holding the .czi and the previous outputs. Earlier islets, cells, periods and removals load automatically. amendSteps = any of cells, islets, periods, remove. New cells/islets are numbered after the old ones; old numbers never change. The background-removal click is skipped.
