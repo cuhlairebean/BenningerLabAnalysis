@@ -101,3 +101,13 @@ Settings are at the top of the wgui script.
 
 - **rerun = true**: rebuild exports from saved files (no .czi needed, no popups). Options: rerunIslets, rerunReviewIslets (click-to-remove window, or all), rerunReselectPeriods, rerunRemoveCells, rerunRestoreIslets.
 - **Amend**: with rerun = true you are asked Redo or Amend (then which steps). Run from the folder holding the .czi; previous outputs come from rerunFolder/rerunFilename. Earlier islets, cells, periods and removals load automatically. amendSteps = any of cells, islets, periods, remove. New cells/islets are numbered after the old ones; old numbers never change. The background-removal click is skipped.
+
+## How the data are processed (and why)
+
+For every cell, on the whole recording:
+
+1. **Detrend** - subtract the cell own straight-line trend (linear regression vs time). Each cell has its own indicator load, depth and bleaching rate, so each drifts differently; removing its own drift leaves only the calcium activity.
+2. **Normalize to dF/F** - (D - b) / F0, where D is the detrended trace, b is its mean over the Baseline period you select (puts the baseline at 0) and F0 is the mean of the cell RAW trace over that same Baseline (its resting brightness). The result is a fraction of the cell own resting brightness, so dim and bright cells are comparable and none dominates. F0 is taken from the raw trace because detrending removes the cell brightness; dividing by the detrended baseline mean can be near 0 or negative and would amplify or flip a dim cell.
+3. **x -1 (optional)** - for signals that decrease when calcium rises, so that rises plot upward. Applied last so it only flips the sign.
+
+Details and the switch back to the old denominator (NORM_DENOM) are in the header of processAndExportPeriods.m (BenningerLabUniversalFunctions).

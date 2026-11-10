@@ -32,7 +32,7 @@ rerunDrug         = 'KCl';      % Evelyn extras (only used if rerunUser = 'Evely
 rerunSex          = 'F';
 rerunAge          = NaN;
 % --- WHAT TO CHANGE IN THE RERUN (all optional; leave empty = redo everything with the saved choices) ---
-rerunIslets       = [];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
+rerunIslets       = [4];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
 rerunReviewIslets = [];      % islets whose traces open in the click-to-remove window: [2], [1 3] or 'all'
 rerunReselectPeriods = [];   % islets whose periods (baseline, phases...) are re-clicked: [2] or 'all' (previous ones are shown)
 rerunRemoveCells  = {};      % remove specific cells without a window: {islet, [cell numbers]; ...}
@@ -915,11 +915,18 @@ disp('END!')
 end   % if rerun ... else (everything from "Paths for data to analyze" to here is skipped when rerun = true)
 
 
-%% PROCESSING: PER-CELL DETREND -> NORMALIZE TO DETRENDED BASELINE -> (x -1) AND EXPORT (one workbook per islet)
-% On the WHOLE matrix (every frame of every cell):
-%   1) detrend    per cell: trendline = slope*time + intercept (own regression), subtracted from that cell
-%   2) normalize  the DETRENDED data: (D - mean_baseline)/mean_baseline  (baseline = the period you selected)
-%   3) x -1       LAST, only if selected
+%% PROCESSING: PER-CELL DETREND -> NORMALIZE (dF/F) TO EACH CELL'S OWN BASELINE -> (x -1) AND EXPORT (one workbook per islet)
+% On the WHOLE matrix (every frame of every cell), cell by cell:
+%   1) detrend    trendline = slope*time + intercept (the cell's OWN regression) is subtracted.
+%                 WHY: every cell has its own indicator load, depth and bleaching rate, so each drifts differently;
+%                 removing its own linear drift leaves only the calcium activity.
+%   2) normalize  (D - b) / F0   with D = detrended trace, b = its mean over the Baseline you selected (sets the
+%                 baseline to 0), F0 = mean of the cell's RAW trace over that same Baseline (its resting brightness).
+%                 WHY: the result is a fraction of the cell's own resting brightness (dF/F), so dim and bright cells
+%                 are comparable and none dominates. F0 comes from the RAW trace because detrending removes the cell's
+%                 brightness (dividing by the detrended baseline mean can be ~0/negative and amplify or flip a cell).
+%   3) x -1       LAST, only if selected: for signals that decrease when calcium rises, so rises plot upward.
+% (Full explanation: header of processAndExportPeriods.m in BenningerLabUniversalFunctions.)
 % Output per islet:  <filename>_islet#_normalized.xlsx
 % Low glucose, High glucose, Drug -> labels in the 'condition' column + per-period means.
 % (First phase / Second phase are saved in the _PeriodIndices files for later analysis.)
@@ -1119,7 +1126,13 @@ else
             if inList(rerunReviewIslets,k)
                 curMask = ~ismember(cellLabels,removedCells);
                 lblNow = cellLabels(curMask);
-                keepNow = removeCellsGUI(CellTC_use(:,curMask), lblNow, [filename sfx]);
+                dispNorm = [];
+                try
+                    [~,matsRm] = processAndExportPeriods(CellTC_use(:,curMask), IsletPeriods_all{k}, timeVec, '', lblNow, applyNeg1, false);
+                    if isfield(matsRm,'normalized') && isequal(size(matsRm.normalized),size(CellTC_use(:,curMask))), dispNorm = matsRm.normalized; end
+                catch
+                end
+                keepNow = removeCellsGUI(CellTC_use(:,curMask), lblNow, [filename sfx], dispNorm);
                 removedCells = unique([removedCells, lblNow(~keepNow)],'stable');
             end
             rmMask = ismember(cellLabels,removedCells);
@@ -1134,17 +1147,25 @@ else
 
         else
         % Optional: remove outlier cells BEFORE detrending/normalizing (they would skew the trendline)
-        % The raw traces are shown FIRST so you can judge whether any cell is an outlier, then you are asked.
-        previewFig = figure('Name',['Raw traces ' filename sfx ' - look for outlier cells'],'NumberTitle','off');
-        plot(CellTC_use,'Color',[0.3 0.3 0.3 0.6]);
-        xlabel('Frame index'); ylabel('Intensity');
+        % The NORMALIZED traces are shown (outliers are often only visible after normalizing: a dim cell with a
+        % tiny baseline gets a huge dF/F), then you are asked.
+        dispNorm = [];
+        try
+            [~,matsRm] = processAndExportPeriods(CellTC_use, IsletPeriods_all{k}, timeVec, '', cellLabels, applyNeg1, false);
+            if isfield(matsRm,'normalized') && isequal(size(matsRm.normalized),size(CellTC_use)), dispNorm = matsRm.normalized; end
+        catch
+        end
+        if isempty(dispNorm), dispNorm = CellTC_use; yLab = 'Intensity (raw)'; else, yLab = 'Normalized \DeltaF/F'; end
+        previewFig = figure('Name',['Normalized traces ' filename sfx ' - look for outlier cells'],'NumberTitle','off');
+        plot(dispNorm,'Color',[0.3 0.3 0.3 0.6]);
+        xlabel('Frame index'); ylabel(yLab);
         title([filename sfx ' | ' num2str(size(CellTC_use,2)) ' cells'],'Interpreter','none');
         drawnow
         rmAns = questdlg(sprintf('Looking at the traces in the figure: remove any outlier cells from %s?\n(Yes opens the click-to-remove window.)',[filename sfx]), ...
             'Remove cells','Yes','No','No');
         if isvalid(previewFig), close(previewFig); end
         if strcmp(rmAns,'Yes')
-            keepCells = removeCellsGUI(CellTC_use, cellLabels, [filename sfx]);
+            keepCells = removeCellsGUI(CellTC_use, cellLabels, [filename sfx], dispNorm, yLab);
             if any(~keepCells)
                 fprintf('  Removed %d cell(s): %s\n',nnz(~keepCells),strjoin(cellLabels(~keepCells),', '));
                 removedCells = cellLabels(~keepCells);
@@ -1220,6 +1241,7 @@ else
                 [~,matsDS] = processAndExportPeriods(CellTC_use, IsletPeriods_all{k}, timeVec, '', ...
                     cellLabels, applyNeg1, false);        % compute only, no files
                 nT  = size(CellTC_use,1);
+                nFr = max(numel(IsletTC_all{k}), nT);       % frames of the islet trace (CellTC has one row fewer)
                 tvDS = timeVec(:);
                 if isempty(tvDS), tvDS = (1:nT)'; end
                 if numel(tvDS) < nT, tvDS(end+1:nT,1) = NaN; end
