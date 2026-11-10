@@ -22,18 +22,26 @@
 %% SETTINGS (edit here)
 % RERUN MODE: set rerun = true to skip all image processing/clicking and rebuild the
 % normalized/frequency outputs from files saved by a previous run (no popups).
-rerun             = false;
-rerunFolder       = '';      % folder containing the previous outputs, e.g. '/Volumes/.../output'
-rerunFilename     = '';      % the name typed at "Input Filename" in the original run
-rerunMultiplyNeg1 = false;   % same choice as the original run
-rerunUser         = 'Other'; % 'Evelyn' or 'Other'
-rerunDrug         = '';      % Evelyn extras (only used if rerunUser = 'Evelyn')
-rerunSex          = '';
+rerun             = true;
+rerunFolder       = 'out';      % folder containing the previous outputs, e.g. '/Volumes/.../output'
+rerunFilename     = '10-29-26_5mMPC_d1';      % the name typed at "Input Filename" in the original run
+rerunMultiplyNeg1 = true;   % same choice as the original run
+rerunUser         = 'Evelyn'; % 'Evelyn' or 'Other'
+rerunDrug         = 'KCl';      % Evelyn extras (only used if rerunUser = 'Evelyn')
+rerunSex          = 'F';
 rerunAge          = NaN;
+% --- WHAT TO CHANGE IN THE RERUN (all optional; leave empty = redo everything with the saved choices) ---
+rerunIslets       = [];      % islets to reprocess, e.g. [2]. [] = all islets
+rerunReviewIslets = [];      % islets whose traces open in the click-to-remove window, e.g. [2]
+rerunRemoveCells  = {};      % remove specific cells without a window: {islet, [cell numbers]; ...}
+                             %   e.g. {2,[5 7]; 3,12}  = cells 5 and 7 of islet 2, cell 12 of islet 3
+rerunRestoreIslets = [];     % islets whose previously removed cells are put back first, e.g. [2]
+% Removals are ADDED to the ones saved by the previous run and saved again (_RemovedCells.mat).
+% Only the islets in rerunIslets are re-exported; every output file of those islets is overwritten.
 
 %% HOUSEKEEPING
 close all
-clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge
+clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunRemoveCells rerunRestoreIslets
 clc
 % Who is running the analysis? 'Evelyn' also exports the Analysis_dataset_detrended.xlsx workbook
 if rerun
@@ -931,16 +939,41 @@ else
             if numel(timeVec) > size(CellTC_use,1), timeVec = timeVec(1:size(CellTC_use,1)); else, timeVec = []; end
         end
         if rerun
-            % re-run: re-apply the removal saved by the previous run (no questions asked)
+            % re-run: optionally restrict to some islets
+            if ~isempty(rerunIslets) && ~ismember(k,rerunIslets), continue; end
+            % start from the removal saved by the previous run (unless restored)
             rf = fullfile(output_dir,[filename sfx '_RemovedCells.mat']);
-            if exist(rf,'file')
-                Sr = load(rf,'removedCells');
-                rmMask = ismember(cellLabels,Sr.removedCells);
+            removedCells = {};
+            if exist(rf,'file') && ~ismember(k,rerunRestoreIslets)
+                Sr = load(rf); fnR = fieldnames(Sr);
+                if isfield(Sr,'removedCells'), removedCells = cellstr(Sr.removedCells); else, removedCells = cellstr(Sr.(fnR{1})); end
+            elseif ismember(k,rerunRestoreIslets)
+                fprintf('  Islet %d: previous removals cleared (rerunRestoreIslets).\n',k);
+            end
+            % new removals typed in rerunRemoveCells
+            for rr = 1:size(rerunRemoveCells,1)
+                if rerunRemoveCells{rr,1} == k
+                    removedCells = [removedCells, arrayfun(@(j) sprintf('cell%d',j),rerunRemoveCells{rr,2}(:)','UniformOutput',false)]; %#ok<AGROW>
+                end
+            end
+            removedCells = unique(removedCells,'stable');
+            % optional click-to-remove window (traces shown with the saved removals already applied)
+            if ismember(k,rerunReviewIslets)
+                curMask = ~ismember(cellLabels,removedCells);
+                lblNow = cellLabels(curMask);
+                keepNow = removeCellsGUI(CellTC_use(:,curMask), lblNow, [filename sfx]);
+                removedCells = unique([removedCells, lblNow(~keepNow)],'stable');
+            end
+            rmMask = ismember(cellLabels,removedCells);
+            if any(rmMask)
+                fprintf('  Islet %d: %d cell(s) removed: %s\n',k,nnz(rmMask),strjoin(cellLabels(rmMask),', '));
                 CellTC_use = CellTC_use(:,~rmMask);
                 cellLabels = cellLabels(~rmMask);
                 cellIDs_use = cellIDs_use(~rmMask);
-                fprintf('  Re-applied removal of %d cell(s) from the previous run: %s\n',nnz(rmMask),strjoin(Sr.removedCells,', '));
             end
+            save(rf,'removedCells');
+            fprintf('  Islet %d: saved removal list to %s\n',k,rf);
+
         else
         % Optional: remove outlier cells BEFORE detrending/normalizing (they would skew the trendline)
         % The raw traces are shown FIRST so you can judge whether any cell is an outlier, then you are asked.
