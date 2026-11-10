@@ -1,5 +1,19 @@
 # BenningerLabAnalysis
 Calcium and Islet Analysis
+
+## Quick start: First_Calcium_Timecourse_1channel_Reference_CLEI_wgui.m (islet/cell timecourses, normalization, frequency/amplitude/duty cycle)
+1. Install git (https://git-scm.com/downloads) and have MATLAB with the Image Processing and Statistics and Machine Learning toolboxes.
+2. Get the script: `git clone https://github.com/cuhlairebean/BenningerLabAnalysis.git` into `~/Documents/GitHub/`
+   (or download it from GitHub). The helper functions live in the sister repo
+   [BenningerLabUniversalFunctions](https://github.com/cuhlairebean/BenningerLabUniversalFunctions).
+3. Open `First_Calcium_Timecourse_1channel_Reference_CLEI_wgui.m` in MATLAB and run it. In the first dialog choose **New user**:
+   it clones/updates both repos into `~/Documents/GitHub`, downloads the Bio-Formats jar if missing and installs the toolboxes if missing.
+   Then **restart MATLAB**.
+4. Open the folder with your `.czi` data as MATLAB's *Current Folder*, set `filename` near the top of the script and run it,
+   choosing **Other** (or **Evelyn**) in the first dialog. The high-res overlay file (`<name>_pre.czi` / `<name>pre.czi`) is found automatically.
+5. Updating later: choose **New user** again (it pulls the latest code), then restart MATLAB.
+
+Troubleshooting: if MATLAB says a `.czi` can't be opened, restart MATLAB (an older Bio-Formats jar may still be loaded) and check the file opens in ZEN/Fiji.
 Calcium_Timecourse_1channel_CL.m
 •	Use for a single channel (i.e. Fluo4 or GCaMP)
 •	This code is designed to extract timecourses of fluorescent signals

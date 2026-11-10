@@ -91,9 +91,8 @@ if ~exist(univDir,'dir')
 end
 addpath(univDir);
 addpath(analysisDir);
-% Bio-Formats jar: a newer copy in ~/Documents/MATLAB is preferred (newer .czi files need a recent
-% version); otherwise the older copy shipped in the repo is used.
-% Newest jar: https://www.openmicroscopy.org/bio-formats/downloads/  (bioformats_package.jar)
+% Bio-Formats jar: a copy in ~/Documents/MATLAB is used if present, otherwise the (current) copy shipped
+% in BenningerLabUniversalFunctions. Newest jar: https://www.openmicroscopy.org/bio-formats/downloads/
 homeDir = char(java.lang.System.getProperty('user.home'));
 bfJar = fullfile(homeDir,'Documents','MATLAB','bioformats_package.jar');
 if ~exist(bfJar,'file'), bfJar = fullfile(univDir,'bioformats_package.jar'); end
@@ -158,7 +157,15 @@ end
 
 %https://www.openmicroscopy.org/bio-formats/downloads/
 
-R = bfopen(czi_file); % Uses bfopen program to open .czi/.lsm image files
+try
+    R = bfopen(czi_file); % Uses bfopen program to open .czi/.lsm image files
+catch ME
+    error(['Bio-Formats could not open:\n  %s\n\nMost common causes:\n' ...
+        '  1) An older Bio-Formats jar is loaded in this MATLAB session -> RESTART MATLAB and run again.\n' ...
+        '  2) The .czi is incomplete/corrupted (interrupted acquisition or copy) -> open it in ZEN/Fiji to check.\n' ...
+        '  3) Not enough Java memory for a very large file -> MATLAB Preferences > General > Java Heap Memory.\n\n' ...
+        'Original error: %s'],czi_file,ME.message);
+end
 
 % Number of channels in file - important if its multichannel or ref.channel
                                                                                                   %  %%% CHANGE HERE  %%%%%%%%%
@@ -284,10 +291,15 @@ clear OGFig GrayFig;
 % It is automatically stretched onto the image grid (e.g. 512x512).
 OverlayStack = []; OverlayChannelNames = {};
 [czi_dir, czi_name, czi_ext] = fileparts(czi_file);
-preFile = fullfile(czi_dir, [czi_name '_pre' czi_ext]);
-if ~exist(preFile,'file')
-    disp(['Not found: ' preFile]);
-    [ovFile, ovPath] = uigetfile('*.czi','Select high-res _pre .czi (Cancel = no overlay)');
+% Accepts <name>_pre.czi, <name>pre.czi, <name>_pre1.czi, <name>pre1.czi ... in the same folder.
+preFile = '';
+for pc = {'_pre','pre','_pre1','pre1','_Pre','Pre'}
+    cand = fullfile(czi_dir, [czi_name pc{1} czi_ext]);
+    if exist(cand,'file') == 2, preFile = cand; break; end
+end
+if isempty(preFile)
+    disp(['No "' czi_name '_pre.czi" (or "' czi_name 'pre.czi") found in ' czi_dir]);
+    [ovFile, ovPath] = uigetfile('*.czi','Select high-res _pre .czi (Cancel = no overlay)',[czi_dir filesep]);
     if ~isequal(ovFile,0), preFile = fullfile(ovPath,ovFile); else, preFile = ''; end
 end
 if ~isempty(preFile)
