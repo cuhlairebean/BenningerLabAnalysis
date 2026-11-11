@@ -23,7 +23,7 @@
 %% SETTINGS (edit here)
 % RERUN MODE: set rerun = true to skip all image processing/clicking and rebuild the
 % normalized/frequency outputs from files saved by a previous run (no popups).
-rerun             = true;
+rerun             = false;
 rerunFolder       = 'out';      % folder containing the previous outputs, e.g. '/Volumes/.../output'
 rerunFilename     = '10-29-26_11mMPC_d1';      % the name typed at "Input Filename" in the original run
 rerunMultiplyNeg1 = true;   % same choice as the original run
@@ -299,7 +299,7 @@ addpath(filepath);
 
 % 2. INPUT FILE NAME                                                                            %%% CHANGE HERE  %%%%%%%%%
 
-filename = ['10-29-26_11mMPC__d1.czi'];
+filename = ['9-24-26_5mMPC_d1.czi'];
 % raw time-series file; 'filename' is later replaced by the output name you type.
 % The file is looked for in 'filepath' (above) first, then in the current folder / as a full path.
 if amend 
@@ -644,6 +644,7 @@ for k = 1:nIslets
     writetable(rangeTbl,[output_dir '/' filename isletTag '_PeriodRanges.csv']);
     save([output_dir '/' filename isletTag '_PeriodIndices.mat'],'IsletPeriods','PeriodIndices','periodNames');
     saveas(IsletTCfig,[output_dir '/' filename isletTag '_IsletTC_periods.tif']);
+    saveFigurePng(IsletTCfig,[output_dir '/' filename isletTag '_IsletTC_periods']);
     disp(['Saved period indices for ' filename isletTag]);
 end
 
@@ -924,6 +925,7 @@ for g = 1:numel(groupIDs)
     plot(CellTC);
     title([filename sfx],'Interpreter','none');
     saveas(TCFig,[output_dir '/' filename sfx '_TCPlot.tif']);
+    saveFigurePng(TCFig,[output_dir '/' filename sfx '_TCPlot']);
     save([output_dir '/' filename sfx '_CaWaveForm.mat'],'CellTC'); % CaWaveForm - Cell TC
 end
 CellMask = CellMask_All;   % restore full mask
@@ -961,6 +963,7 @@ if nIslets > 0
     lgI.Title.String = 'Islet'; lgI.Title.Color = 'k';
 end
 saveas(LabelFig,[output_dir '/' filename '_CellLabels_byIslet.tif']);
+saveFigurePng(LabelFig,[output_dir '/' filename '_CellLabels_byIslet']);
 
 disp('END!')
 
@@ -1142,6 +1145,7 @@ if rerun && rerunPlotsOnly
             end
             [NormFig,~,~] = plotNormalizedTraces(tPl, Nmat, xlab, [filename sfx], ratioIslet, campariThreshold);
             saveas(NormFig, fullfile(output_dir,[filename sfx '_NormalizedTraces.tif']));
+            saveFigurePng(NormFig, fullfile(output_dir,[filename sfx '_NormalizedTraces']));
             savefig(NormFig, fullfile(output_dir,[filename sfx '_NormalizedTraces.fig']));
             fprintf('Plots only: redrew %s%s (%d cells).\n',filename,sfx,size(Nmat,2));
         catch MEp
@@ -1337,13 +1341,18 @@ else
             if ~isempty(rerunIslets) && ~inList(rerunIslets,k), continue; end
             % start from the removal saved by the previous run (unless restored)
             rf = fullfile(output_dir,[filename sfx '_RemovedCells.mat']);
-            removedCells = {};
+            removedCells = {}; prevRemoved = {}; restoredCells = {};   % prevRemoved / restoredCells feed the Change log
             redrawNow = amend && ismember('redraw',amendSteps);   % cells were redrawn: old removals use the OLD numbering -> ignored
             if redrawNow && exist(rf,'file') && k == 1, fprintf('Cells were redrawn: earlier removal lists (old cell numbers) are ignored.\n'); end
             if exist(rf,'file') && ~inList(rerunRestoreIslets,k) && ~redrawNow
                 Sr = load(rf); fnR = fieldnames(Sr);
                 if isfield(Sr,'removedCells'), removedCells = cellstr(Sr.removedCells); else, removedCells = cellstr(Sr.(fnR{1})); end
+                prevRemoved = removedCells;
             elseif inList(rerunRestoreIslets,k)
+                if exist(rf,'file')
+                    Sr = load(rf); fnR = fieldnames(Sr);
+                    if isfield(Sr,'removedCells'), restoredCells = cellstr(Sr.removedCells); else, restoredCells = cellstr(Sr.(fnR{1})); end
+                end
                 fprintf('  Islet %d: previous removals cleared (rerunRestoreIslets).\n',k);
             end
             % new removals typed in rerunRemoveCells
@@ -1374,6 +1383,7 @@ else
                     [output_dir '/' filename sfx '_PeriodRanges.csv']);
                 save([output_dir '/' filename sfx '_PeriodIndices.mat'],'IsletPeriods','PeriodIndices','periodNames');
                 saveas(PerFig,[output_dir '/' filename sfx '_IsletTC_periods.tif']);
+                saveFigurePng(PerFig,[output_dir '/' filename sfx '_IsletTC_periods']);
                 fprintf('  Islet %d: periods re-selected and saved.\n',k);
             end
             % optional click-to-remove window (traces shown with the saved removals already applied)
@@ -1403,6 +1413,7 @@ else
         % Optional: remove outlier cells BEFORE detrending/normalizing (they would skew the trendline)
         % The NORMALIZED traces are shown (outliers are often only visible after normalizing: a dim cell with a
         % tiny baseline gets a huge dF/F), then you are asked.
+        removedCells = {}; prevRemoved = {}; restoredCells = {};   % reset per islet (feeds the Change log)
         dispNorm = [];
         try
             [~,matsRm] = processAndExportPeriods(CellTC_use, IsletPeriods_all{k}, timeVec, '', cellLabels, applyNeg1, false);
@@ -1443,9 +1454,54 @@ else
             end
         end
         cellLabels = cellLabels(:)';
+        % ---- CHANGE LOG: everything removed / appended / changed for this islet (see changeLogIO.m) ----
+        % Written as sheet 'Change log' into every output workbook with analysis / mean values. Earlier runs' rows are kept.
+        logRows = cell(0,2);
+        try
+            if amend, runModeTxt = ['Amend: ' strjoin(cellstr(amendSteps),', ')];
+            elseif rerun, runModeTxt = 'Redo';
+            else, runModeTxt = 'First run'; end
+            logRows(end+1,:) = {'Run',sprintf('%s | user %s | normalization multiplied by -1: %d',runModeTxt,user,logical(applyNeg1))}; %#ok<AGROW>
+            if ~exist('removedCells','var') || isempty(removedCells), remNow = {}; else, remNow = cellstr(removedCells); end
+            if ~exist('prevRemoved','var') || isempty(prevRemoved), remBefore = {}; else, remBefore = cellstr(prevRemoved); end
+            if ~exist('restoredCells','var') || isempty(restoredCells), remRestored = {}; else, remRestored = cellstr(restoredCells); end
+            newlyRem = setdiff(remNow,remBefore,'stable');
+            if isempty(remNow), logRows(end+1,:) = {'Cells removed','none'}; %#ok<AGROW>
+            else
+                logRows(end+1,:) = {'Cells removed',strjoin(remNow,', ')}; %#ok<AGROW>
+                if ~isempty(newlyRem), logRows(end+1,:) = {'Cells removed this run',strjoin(newlyRem,', ')}; end %#ok<AGROW>
+            end
+            if ~isempty(remRestored), logRows(end+1,:) = {'Cells restored (earlier removals cleared)',strjoin(remRestored,', ')}; end %#ok<AGROW>
+            logRows(end+1,:) = {'Cells kept',sprintf('%d: %s',numel(cellLabels),strjoin(cellLabels,', '))}; %#ok<AGROW>
+            if amend
+                if ismember('redraw',amendSteps)
+                    logRows(end+1,:) = {'Cells redrawn',sprintf('all cells discarded and drawn again (%d cells)',numcells)}; %#ok<AGROW>
+                elseif exist('existingCells','var') && ~isempty(existingCells) && numcells > max(existingCells(:))
+                    logRows(end+1,:) = {'Cells appended',sprintf('cell%d to cell%d added to the %d existing cells', ...
+                        max(existingCells(:))+1,numcells,max(existingCells(:)))}; %#ok<AGROW>
+                end
+            end
+            if rerun && inList(rerunReselectPeriods,k), logRows(end+1,:) = {'Periods','re-selected in this run'}; end %#ok<AGROW>
+            Pl = IsletPeriods_all{k}; pTxt = cell(1,numel(Pl));
+            for pq = 1:numel(Pl), pTxt{pq} = sprintf('%s %d-%d',Pl(pq).name,Pl(pq).start,Pl(pq).end); end
+            logRows(end+1,:) = {'Periods (frame indices)',strjoin(pTxt,'; ')}; %#ok<AGROW>
+            if strcmp(user,'Evelyn') && exist('campariThreshold','var') && ~isempty(campariThreshold) && ~isnan(campariThreshold)
+                cTxt = sprintf('threshold %.4g',campariThreshold);
+                if exist('campariBg','var') && numel(campariBg) == 2, cTxt = sprintf('%s | green bg %.4g, red bg %.4g',cTxt,campariBg(1),campariBg(2)); end
+                if (amend && ismember('campari',amendSteps)) || (rerun && rerunCampari), cTxt = [cTxt ' | CaMPARI step redone in this run']; end
+                logRows(end+1,:) = {'CaMPARI',cTxt}; %#ok<AGROW>
+            end
+        catch MEl
+            logRows(end+1,:) = {'Change log',['incomplete: ' MEl.message]}; %#ok<AGROW>
+        end
+        thisLog = changeLogIO('rows',[filename sfx],logRows);
+        xlNormPath = fullfile(output_dir,[filename sfx '_normalized.xlsx']);
+        prevLogNorm = changeLogIO('read',xlNormPath);      % the export below deletes + rewrites the workbook
+
         fprintf('Processing %s%s (%d cells, %d frames)\n',filename,sfx,size(CellTC_use,2),size(CellTC_use,1));
         processAndExportPeriods(CellTC_use, IsletPeriods_all{k}, timeVec, ...
             fullfile(output_dir,[filename sfx]), cellLabels, applyNeg1);
+        changeLogIO('write',xlNormPath,[prevLogNorm; thisLog]);
 
         % ---- plot: normalized data, cells semi-transparent (alpha 0.3) + bold opaque mean(s) ----
         % Evelyn + CaMPARI info available: cells coloured by red:green ratio (green -> magenta), and bold means for
@@ -1468,6 +1524,7 @@ else
                 end
                 [NormFig, cellClass, clsMeans] = plotNormalizedTraces(tPl, matsPl.normalized, xlab, [filename sfx], ratioIslet, campariThreshold);
                 saveas(NormFig, fullfile(output_dir,[filename sfx '_NormalizedTraces.tif']));
+                saveFigurePng(NormFig, fullfile(output_dir,[filename sfx '_NormalizedTraces']));
                 savefig(NormFig, fullfile(output_dir,[filename sfx '_NormalizedTraces.fig']));
                 if ~isempty(ratioIslet)
                     % add the three mean traces to the 'data' sheet and list every cell's class in 'Cell classes'
@@ -1485,6 +1542,17 @@ else
                     catch ME2
                         warning('Could not add the CaMPARI means to %s (%s).',xlN,ME2.message);
                     end
+                else
+                    % non-CaMPARI users: the mean of all (kept) cells is added to the 'data' sheet, the same column that is plotted
+                    xlN = fullfile(output_dir,[filename sfx '_normalized.xlsx']);
+                    try
+                        Td = readtable(xlN,'Sheet','data');
+                        Td.mean_all = clsMeans.all(1:height(Td));
+                        writetable(Td,xlN,'Sheet','data');
+                        fprintf('  Mean of all %d cell(s) added to %s\n',numel(cellLabels),[filename sfx '_normalized.xlsx']);
+                    catch ME2
+                        warning('Could not add the mean to %s (%s).',xlN,ME2.message);
+                    end
                 end
             end
         catch ME
@@ -1499,8 +1567,10 @@ else
                 [~,matsFA] = processAndExportPeriods(CellTC_use, IsletPeriods_all{k}, timeVec, '', ...
                     cellLabels, applyNeg1, false);        % compute only, no files
                 if isfield(matsFA,'normalized')
-                    freqAmpDutyCycleExport(matsFA.normalized, IsletPeriods_all{k}, timeVec, cellLabels, ...
-                        fullfile(output_dir,[filename sfx '_FreqAmpDutyCycle.xlsx']));
+                    xlFA = fullfile(output_dir,[filename sfx '_FreqAmpDutyCycle.xlsx']);
+                    prevLogFA = changeLogIO('read',xlFA);      % export below rewrites the workbook -> keep the old log
+                    freqAmpDutyCycleExport(matsFA.normalized, IsletPeriods_all{k}, timeVec, cellLabels, xlFA);
+                    changeLogIO('write',xlFA,[prevLogFA; thisLog]);
                 end
             catch ME
                 warning('Frequency analysis failed for %s (%s).',[filename sfx],ME.message);
@@ -1536,6 +1606,8 @@ else
                 S.DRG_ID = drgChoice; S.Glucose_Conditions = glucoseVal; S.Sex = sexChoice; S.Age = ageVal;
                 S.BL = blT; S.HG = round(hgT,2); S.FP = fpT; S.SP = spT; S.DRG = drT;
                 appendAnalysisDataset(analysisDatasetPath,[filename sfx],S,dataDS);
+                prevLogDS = changeLogIO('read',analysisDatasetPath);
+                changeLogIO('write',analysisDatasetPath,[prevLogDS; thisLog]);
             catch ME
                 warning('Could not update %s (%s). Is the file open in Excel?',analysisDatasetPath,ME.message);
             end
