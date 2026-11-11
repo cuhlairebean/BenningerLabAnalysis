@@ -23,13 +23,13 @@
 %% SETTINGS (edit here)
 % RERUN MODE: set rerun = true to skip all image processing/clicking and rebuild the
 % normalized/frequency outputs from files saved by a previous run (no popups).
-rerun             = true;
-rerunFolder       = 'out';      % folder containing the previous outputs, e.g. '/Volumes/.../output'
-rerunFilename     = '10-29-26_5mMPC_d1';      % the name typed at "Input Filename" in the original run
+rerun             = false;
+rerunFolder       = '';      % folder containing the previous outputs, e.g. '/Volumes/.../output'
+rerunFilename     = '';      % the name typed at "Input Filename" in the original run
 rerunMultiplyNeg1 = true;   % same choice as the original run
 rerunUser         = 'Evelyn'; % 'Evelyn' or 'Other'
-rerunDrug         = 'KCl';      % Evelyn extras (only used if rerunUser = 'Evelyn')
-rerunSex          = 'F';
+rerunDrug         = '';      % Evelyn extras (only used if rerunUser = 'Evelyn')
+rerunSex          = '';
 rerunAge          = NaN;
 % --- WHAT TO CHANGE IN THE RERUN (all optional; leave empty = redo everything with the saved choices) ---
 rerunIslets       = [];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
@@ -42,7 +42,7 @@ rerunCampari      = false;   % Evelyn only, REDO mode: also redo the CaMPARI cha
                              %   classification with a NEW color file. Re-uses all saved traces, cells and periods; only the
                              %   _pre.czi is needed (found in the current folder, or you pick it). Colored figures update.
 rerunPreCzi       = '';      % optional: path/name of the _pre.czi for rerunCampari ('' = search the current folder)
-rerunPlotsOnly    = true;   % REDO mode: ONLY redraw the normalized-trace figures from the saved _normalized.xlsx
+rerunPlotsOnly    = false;   % REDO mode: ONLY redraw the normalized-trace figures from the saved _normalized.xlsx
                              %   (no reprocessing, no exports, no windows). Use after changing how the plot looks.
                              %   Islets = rerunIslets. CaMPARI colors use the saved _CampariInfo.mat.
 % Removals are ADDED to the ones saved by the previous run and saved again (_RemovedCells.mat).
@@ -290,10 +290,10 @@ addpath(filepath);
 
 % 2. INPUT FILE NAME                                                                            %%% CHANGE HERE  %%%%%%%%%
 
-filename = ['10-29-26_5mMPC__d1.czi'];
+filename = ['10-29-26_11mMPC__d1.czi'];
 % raw time-series file; 'filename' is later replaced by the output name you type.
 % The file is looked for in 'filepath' (above) first, then in the current folder / as a full path.
-if amend
+if amend 
     % AMEND: the raw .czi is searched in the current folder (or amendFolder), next to the previous outputs
     amendDir = amendFolder; if isempty(amendDir), amendDir = pwd; end
     filepath = amendDir; addpath(filepath);
@@ -416,8 +416,8 @@ T=st:1:ed;
 
 images=images(:,:,st:ed);
 % Define the start and end frames for your reference image
-start_frame =336;                                                                                         %%% CHANGE HERE  %%%%%%%%%
-end_frame = 1000;
+start_frame =1000;                                                                                         %%% CHANGE HERE  %%%%%%%%%
+end_frame = 2000;
 
 % Check to ensure the selected range is valid
 if start_frame < 1 || end_frame > size(images, 3) || start_frame > end_frame
@@ -918,6 +918,16 @@ for c = 1:numcells
     if isnan(Cent(c,1)), continue; end
     if CellIsletIdx(c) > 0, tcol = isletCols(CellIsletIdx(c),:); else, tcol = [1 1 1]; end
     text(Cent(c,1),Cent(c,2),num2str(c),'Color',tcol); %Labels cells with their region number
+end
+% legend: one entry per islet (outline + cell label colour), with its cell count
+hIsl = gobjects(1,nIslets); lblIsl = cell(1,nIslets);
+for k = 1:nIslets
+    hIsl(k) = plot(NaN,NaN,'--','Color',isletCols(k,:),'LineWidth',2);   % proxy line for the legend
+    lblIsl{k} = sprintf('Islet %d (%d cells)',k,nnz(CellIsletIdx==k));
+end
+if nIslets > 0
+    lgI = legend(hIsl,lblIsl,'Location','eastoutside','Box','off','FontSize',9,'TextColor','k');
+    lgI.Title.String = 'Islet'; lgI.Title.Color = 'k';
 end
 saveas(LabelFig,[output_dir '/' filename '_CellLabels_byIslet.tif']);
 
