@@ -9,7 +9,7 @@
 
 
 % NEED: filename.czi and filename_pre.czi for this code to work
-%_pre is a high quality image acquire
+%_pre is a high quality image acquired before calcium imaging experiment. 
 
 %% FIRST TIME USING THIS CODE?
 % Run this script and choose "New user" in the first dialog. It downloads both GitHub repos
@@ -32,10 +32,10 @@ rerunDrug         = 'KCl';      % Evelyn extras (only used if rerunUser = 'Evely
 rerunSex          = 'F';
 rerunAge          = '3.7 m';
 % --- WHAT TO CHANGE IN THE RERUN (all optional; leave empty = redo everything with the saved choices) ---
-rerunIslets       = [];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
+rerunIslets       = ['all'];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
 rerunReviewIslets = [];      % islets whose traces                        open in the click-to-remove window: [2], [1 3] or 'all'
 rerunReselectPeriods = [];   % islets whose periods (baseline, phases...) are re-clicked: [2] or 'all' (previous ones are shown)
-rerunRemoveCells  = {};      % remove specific cells without a window: {islet, [cell numbers]; ...}
+rerunRemoveCells  = {'all'};      % remove specific cells without a window: {islet, [cell numbers]; ...}
                              %   e.g. {2,[5 7]; 3,12}  = cells 5 and 7 of islet 2, cell 12 of islet 3
 rerunRestoreIslets = [];     % islets whose previously removed cells are put back first, e.g. [2] or 'all'
 rerunCampari      = false;   % Evelyn only, REDO mode: also redo the CaMPARI channels / background / threshold / red-green
@@ -45,7 +45,7 @@ rerunPreCzi       = '10-29-26_11mMPC_d1';      % optional: path/name of the _pre
 rerunPlotsOnly    = false;   % REDO mode: ONLY redraw the normalized-trace figures from the saved _normalized.xlsx
                              %   (no reprocessing, no exports, no windows). Use after changing how the plot looks.
                              %   Islets = rerunIslets. CaMPARI colors use the saved _CampariInfo.mat.
-rerunCellROIs     = true;   % true (with rerun = true): RESELECT all cell ROIs (e.g. after fixing the overlay alignment) and
+rerunCellROIs     = false;   % true (with rerun = true): RESELECT all cell ROIs (e.g. after fixing the overlay alignment) and
                              %   rerun the rest with the new masks. No popups: the saved islets + periods are reused, the
                              %   raw .czi (current folder) and _pre.czi are loaded, then traces/exports/plots are recomputed.
                              %   Old cell numbers are replaced; saved removals refer to the old numbering, so check them.
@@ -700,6 +700,7 @@ end
 CellMask = double(zeros(xx,yy));
 numcells = 1;
 existingCells = [];
+CellPreLabel = [];   % cells in _pre.czi pixel space (set when the cells are drawn; loaded from <filename>_PreMasks.mat otherwise)
 
 if amend
     % amend: load the cells of the previous run (global mask, numbered in draw order)
@@ -728,6 +729,8 @@ end
 switch answer
     case 'Keep existing'
         disp('Amend: cell masks unchanged.')
+        pmFile = [output_dir '/' filename '_PreMasks.mat'];
+        if exist(pmFile,'file'), Spm = load(pmFile); if isfield(Spm,'CellPreLabel'), CellPreLabel = Spm.CellPreLabel; end, end
 
     case 'Import Mask Set'
         disp('Importing Mask Set')
@@ -748,6 +751,12 @@ switch answer
         % Reusable GUI: zoom, brightness/contrast, translucent hi-res .czi overlay.
         % Each cell is checked against IsletMask and gets that islet's number.
         % (amend: earlier cells are shown numbered and kept; new cells continue the numbering)
+        % overlay-space masks of the cells already saved (amend keeps them; new cells are added with their own overlay alignment)
+        existingPre = [];
+        pmFile = [output_dir '/' filename '_PreMasks.mat'];
+        if ~isempty(existingCells) && exist(pmFile,'file')
+            Spm = load(pmFile); if isfield(Spm,'CellPreLabel'), existingPre = Spm.CellPreLabel; end
+        end
         [CellMask, cellInfo] = drawROIsGUI(ref_pic, ...
             'Name','Cell', ...
             'Title','Draw ROIs Around Cells of Interest (islet outlines shown dashed)', ...
@@ -756,11 +765,15 @@ switch answer
             'ChannelNames',OverlayChannelNames, ...
             'ParentMask',IsletMask, ...
             'ParentName','Islet', ...
-            'ExistingLabels',existingCells);
+            'ExistingLabels',existingCells, ...
+            'ExistingPreLabel',existingPre);
         numcells = max(CellMask(:));
 
         save([output_dir '/' filename '_' 'Masks' '.mat'],'CellMask'); %Saves CellMask array
         save([output_dir '/' filename '_' 'CellNumber' '.mat'],'numcells'); %Saves numcells array
+        % the same cells in _pre.czi pixel space (overlay shift/scale/rotation at drawing time undone) -> used for the red:green ratios
+        CellPreLabel = cellInfo.preLabel;
+        if ~isempty(CellPreLabel), save(pmFile,'CellPreLabel'); end
 end
 
 % Which islet does each cell fall in? (same number as the islet mask: 0 = none)
@@ -983,6 +996,9 @@ if rerun && rerunCampari && strcmp(user,'Evelyn')
         fprintf('CaMPARI redo: loaded %s (%d channels)\n',preFile,size(OverlayStack,3));
         Sm = load(fullfile(output_dir,[filename '_Masks.mat'])); fnM = fieldnames(Sm);
         if isfield(Sm,'CellMask'), CellMask_All = Sm.CellMask; else, CellMask_All = Sm.(fnM{1}); end
+        CellPreLabel = [];
+        pmFile = fullfile(output_dir,[filename '_PreMasks.mat']);
+        if exist(pmFile,'file'), Spm = load(pmFile); if isfield(Spm,'CellPreLabel'), CellPreLabel = Spm.CellPreLabel; end, end
         Si = load(fullfile(output_dir,[filename '_IsletMask.mat']));
         if isfield(Si,'IsletMask'), IsletMask = Si.IsletMask; else, fnI = fieldnames(Si); IsletMask = Si.(fnI{1}); end
     catch ME
@@ -1002,7 +1018,8 @@ elseif quiet
         if isfield(Sc,'campariChannels'), campariChannels = Sc.campariChannels; end
         if amend && ~isempty(OverlayStack) && all(~isnan(campariChannels)) && exist('CellMask_All','var') ...
                 && max(campariChannels) <= size(OverlayStack,3)
-            campariRatioAll = campariCellRatios(CellMask_All, OverlayStack(:,:,campariChannels(2)), ...
+            ratioMask = CellMask_All; if ~isempty(CellPreLabel), ratioMask = CellPreLabel; end   % overlay-space cells (alignment kept)
+            campariRatioAll = campariCellRatios(ratioMask, OverlayStack(:,:,campariChannels(2)), ...
                 OverlayStack(:,:,campariChannels(1)), campariBg);
             save(campariFile,'campariThreshold','campariBg','campariRatioAll','campariChannels');
             fprintf('Amend: recomputed red:green ratios for %d cells.\n',numel(campariRatioAll));
@@ -1081,7 +1098,8 @@ if strcmp(thrAns,'Yes')
                             keysOut,fullfile(thrPath,thrFile));
                         if ~isnan(campariThreshold) && all(~isnan(campariBg))
                             % red:green ratio of EVERY traced cell (same formula as the threshold) for the colored figures
-                            campariRatioAll = campariCellRatios(CellMask_All, redIm, greenIm, campariBg);
+                            ratioMask = CellMask_All; if ~isempty(CellPreLabel), ratioMask = CellPreLabel; end   % overlay-space cells (alignment kept)
+                            campariRatioAll = campariCellRatios(ratioMask, redIm, greenIm, campariBg);
                             campariChannels = [gCh rCh];
                             save(fullfile(output_dir,[filename '_CampariInfo.mat']),'campariThreshold','campariBg','campariRatioAll','campariChannels');
                             fprintf('Saved per-cell red:green ratios (%d cells) to %s_CampariInfo.mat\n',numel(campariRatioAll),filename);
