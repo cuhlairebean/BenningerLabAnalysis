@@ -23,14 +23,14 @@
 %% SETTINGS (edit here)
 % RERUN MODE: set rerun = true to skip all image processing/clicking and rebuild the
 % normalized/frequency outputs from files saved by a previous run (no popups).
-rerun             = false;
-rerunFolder       = '';      % folder containing the previous outputs, e.g. '/Volumes/.../output'
-rerunFilename     = '';      % the name typed at "Input Filename" in the original run
+rerun             = true;
+rerunFolder       = 'out';      % folder containing the previous outputs, e.g. '/Volumes/.../output'
+rerunFilename     = '10-29-26_11mMPC_d1';      % the name typed at "Input Filename" in the original run
 rerunMultiplyNeg1 = true;   % same choice as the original run
 rerunUser         = 'Evelyn'; % 'Evelyn' or 'Other'
-rerunDrug         = '';      % Evelyn extras (only used if rerunUser = 'Evelyn')
-rerunSex          = '';
-rerunAge          = NaN;
+rerunDrug         = 'KCl';      % Evelyn extras (only used if rerunUser = 'Evelyn')
+rerunSex          = 'F';
+rerunAge          = '3.7 m';
 % --- WHAT TO CHANGE IN THE RERUN (all optional; leave empty = redo everything with the saved choices) ---
 rerunIslets       = [];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
 rerunReviewIslets = [];      % islets whose traces                        open in the click-to-remove window: [2], [1 3] or 'all'
@@ -41,10 +41,14 @@ rerunRestoreIslets = [];     % islets whose previously removed cells are put bac
 rerunCampari      = false;   % Evelyn only, REDO mode: also redo the CaMPARI channels / background / threshold / red-green
                              %   classification with a NEW color file. Re-uses all saved traces, cells and periods; only the
                              %   _pre.czi is needed (found in the current folder, or you pick it). Colored figures update.
-rerunPreCzi       = '';      % optional: path/name of the _pre.czi for rerunCampari ('' = search the current folder)
+rerunPreCzi       = '10-29-26_11mMPC_d1';      % optional: path/name of the _pre.czi for rerunCampari ('' = search the current folder)
 rerunPlotsOnly    = false;   % REDO mode: ONLY redraw the normalized-trace figures from the saved _normalized.xlsx
                              %   (no reprocessing, no exports, no windows). Use after changing how the plot looks.
                              %   Islets = rerunIslets. CaMPARI colors use the saved _CampariInfo.mat.
+rerunCellROIs     = true;   % true (with rerun = true): RESELECT all cell ROIs (e.g. after fixing the overlay alignment) and
+                             %   rerun the rest with the new masks. No popups: the saved islets + periods are reused, the
+                             %   raw .czi (current folder) and _pre.czi are loaded, then traces/exports/plots are recomputed.
+                             %   Old cell numbers are replaced; saved removals refer to the old numbering, so check them.
 % Removals are ADDED to the ones saved by the previous run and saved again (_RemovedCells.mat).
 % Only the islets in rerunIslets are re-exported; every output file of those islets is overwritten.
 %
@@ -60,20 +64,25 @@ amendSteps    = {'cells'};       % pre-selected steps in the AMEND list: 'cells'
 
 %% HOUSEKEEPING
 close all
-clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunReselectPeriods rerunRemoveCells rerunRestoreIslets rerunCampari rerunPreCzi rerunPlotsOnly amendCzi amendSteps
+clearvars -except rerun rerunFolder rerunFilename rerunMultiplyNeg1 rerunUser rerunDrug rerunSex rerunAge rerunIslets rerunReviewIslets rerunReselectPeriods rerunRemoveCells rerunRestoreIslets rerunCampari rerunPreCzi rerunPlotsOnly rerunCellROIs amendCzi amendSteps
 if rerunPlotsOnly, rerunCampari = false; end   % plots only never redoes the CaMPARI step
 clc
 applyLightTheme();   % light theme for all plots: white background, black fonts and lines
 amend = false;
-if rerun
+if rerun && rerunCellROIs
+    % rerunCellROIs: no popups - reselect ALL cell ROIs (islets + periods are reused), then run the rest with the new masks
+    amend = true; rerun = false; amendSteps = {'redraw'};
+    fprintf('rerunCellROIs: cell ROIs will be selected again, then the rest of the analysis is rerun with the new masks.\n');
+elseif rerun
     modeAns = questdlg('Re-run: REDO the exports from the saved files, or AMEND the previous outputs (add cells / islets / periods / removals using the .czi)?', ...
         'Re-run mode','Redo','Amend','Redo');
     if isempty(modeAns), return; end
     if strcmp(modeAns,'Amend')
-        allSteps = {'cells','islets','periods','remove','campari'};
-        descr = {'cells   - draw additional cells','islets  - draw additional islets', ...
+        allSteps = {'cells','islets','periods','remove','campari','redraw'};
+        descr = {'cells   - draw additional cells (draws them all if none were saved yet, e.g. after an error)','islets  - draw additional islets', ...
                  'periods - re-click periods (baseline, phases...) for every islet','remove  - click cells to remove (every islet)', ...
-                 'campari - re-pick the CaMPARI channels, background (autofluorescence) and red/green threshold'};
+                 'campari - re-pick the CaMPARI channels, background (autofluorescence) and red/green threshold', ...
+                 'redraw  - DISCARD the saved cells and select ALL cell ROIs again (islets + periods are kept)'};
         if ~strcmp(rerunUser,'Evelyn'), allSteps(5) = []; descr(5) = []; end    % CaMPARI is only for Evelyn
         [selIdx,okSel] = listdlg('PromptString','What do you want to amend?','ListString',descr, ...
             'InitialValue',find(ismember(allSteps,amendSteps)),'ListSize',[560 120],'Name','Amend');
@@ -416,8 +425,8 @@ T=st:1:ed;
 
 images=images(:,:,st:ed);
 % Define the start and end frames for your reference image
-start_frame =1000;                                                                                         %%% CHANGE HERE  %%%%%%%%%
-end_frame = 2000;
+start_frame =1900;                                                                                         %%% CHANGE HERE  %%%%%%%%%
+end_frame = 2800;
 
 % Check to ensure the selected range is valid
 if start_frame < 1 || end_frame > size(images, 3) || start_frame > end_frame
@@ -695,12 +704,21 @@ existingCells = [];
 if amend
     % amend: load the cells of the previous run (global mask, numbered in draw order)
     mf = [output_dir '/' filename '_Masks.mat'];
-    if ~exist(mf,'file'), error('Amend: %s not found (the combined cell mask of the previous run).',mf); end
-    Sm = load(mf); fnM = fieldnames(Sm);
-    if isfield(Sm,'CellMask'), existingCells = Sm.CellMask; else, existingCells = Sm.(fnM{1}); end
-    CellMask = existingCells; numcells = max(existingCells(:));
-    fprintf('Amend: loaded %d existing cell(s).\n',numcells);
-    if ismember('cells',amendSteps), answer = 'Draw New Masks'; else, answer = 'Keep existing'; end
+    redrawAll = ismember('redraw',amendSteps);
+    if redrawAll || ~exist(mf,'file')
+        % no cells saved yet (e.g. the first run stopped while drawing) or 'redraw' chosen: draw ALL cells from scratch;
+        % the islets and periods already saved are reused, nothing before this point is repeated
+        existingCells = []; CellMask = zeros(xx,yy); numcells = 0;
+        if redrawAll, disp('Amend: saved cells discarded - draw all cells again.');
+        else, disp('Amend: no saved cell mask found - drawing the cells now (islets and periods are reused).'); end
+        answer = 'Draw New Masks';
+    else
+        Sm = load(mf); fnM = fieldnames(Sm);
+        if isfield(Sm,'CellMask'), existingCells = Sm.CellMask; else, existingCells = Sm.(fnM{1}); end
+        CellMask = existingCells; numcells = max(existingCells(:));
+        fprintf('Amend: loaded %d existing cell(s).\n',numcells);
+        if ismember('cells',amendSteps), answer = 'Draw New Masks'; else, answer = 'Keep existing'; end
+    end
 else
     answer = questdlg('Import Mask Set or Draw New Masks?', ...
         'Import Dialogue', ...
@@ -1031,7 +1049,27 @@ if strcmp(thrAns,'Yes')
                 fprintf('Exported %d channel tiff(s) per file/islet (%s) to %s\n',nOv,strjoin(chSfx,', '),output_dir);
 
                 % --- threshold: selected ONCE, written to Excel for every filename_islet# ---
-                [thrFile, thrPath] = uigetfile('*.xlsx','Select the EXISTING threshold Excel file (e.g. CaMPARI_Color_Thresholds.xlsx)');
+                % The last-used file is remembered (MATLAB preference). You are asked whether it is still the right one;
+                % only if it changed (or none is remembered / the file is gone) does the Finder window open.
+                thrFull = '';
+                if ispref('BenningerLab','campariThrExcel'), thrFull = getpref('BenningerLab','campariThrExcel'); end
+                if isempty(thrFull)    % first time: the known location of the file, if it exists
+                    guess = '/Users/ibarevel/Desktop/CaMPARI/Calcium Imaging/Analysis/November13_AllCaMPARI_Sept-Nov/CaMPARI_Color_Thresholds.xlsx';
+                    if exist(guess,'file') == 2, thrFull = guess; end
+                end
+                thrFile = 0; thrPath = '';
+                if ~isempty(thrFull) && exist(thrFull,'file') == 2
+                    kAns = questdlg(sprintf('CaMPARI threshold Excel file:\n%s\n\nIs this still the right file?',thrFull), ...
+                        'CaMPARI threshold file','Yes, use it','No, choose another','Yes, use it');
+                    if strcmp(kAns,'Yes, use it')
+                        [thrPath,tn,te] = fileparts(thrFull); thrFile = [tn te]; thrPath = [thrPath filesep];
+                    elseif strcmp(kAns,'No, choose another')
+                        [thrFile, thrPath] = uigetfile('*.xlsx','Select the EXISTING threshold Excel file (e.g. CaMPARI_Color_Thresholds.xlsx)');
+                    end   % dialog closed -> thrFile stays 0 -> the threshold step is skipped
+                else
+                    [thrFile, thrPath] = uigetfile('*.xlsx','Select the EXISTING threshold Excel file (e.g. CaMPARI_Color_Thresholds.xlsx)');
+                end
+                if ~isequal(thrFile,0), setpref('BenningerLab','campariThrExcel',fullfile(thrPath,thrFile)); end
                 if ~isequal(thrFile,0)
                     isletKeys = arrayfun(@(kI) sprintf('%s_islet%d',filename,kI),1:nIslets,'UniformOutput',false);
                     nameAns = inputdlg(['Row keys written to the Excel file (separate with commas):'], ...
@@ -1282,7 +1320,9 @@ else
             % start from the removal saved by the previous run (unless restored)
             rf = fullfile(output_dir,[filename sfx '_RemovedCells.mat']);
             removedCells = {};
-            if exist(rf,'file') && ~inList(rerunRestoreIslets,k)
+            redrawNow = amend && ismember('redraw',amendSteps);   % cells were redrawn: old removals use the OLD numbering -> ignored
+            if redrawNow && exist(rf,'file') && k == 1, fprintf('Cells were redrawn: earlier removal lists (old cell numbers) are ignored.\n'); end
+            if exist(rf,'file') && ~inList(rerunRestoreIslets,k) && ~redrawNow
                 Sr = load(rf); fnR = fieldnames(Sr);
                 if isfield(Sr,'removedCells'), removedCells = cellstr(Sr.removedCells); else, removedCells = cellstr(Sr.(fnR{1})); end
             elseif inList(rerunRestoreIslets,k)
