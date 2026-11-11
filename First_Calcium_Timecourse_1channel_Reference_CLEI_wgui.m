@@ -299,7 +299,7 @@ addpath(filepath);
 
 % 2. INPUT FILE NAME                                                                            %%% CHANGE HERE  %%%%%%%%%
 
-filename = ['9-24-26_5mMPC_d1.czi'];
+filename = ['9-24-26_11mMPC_d2.czi'];
 % raw time-series file; 'filename' is later replaced by the output name you type.
 % The file is looked for in 'filepath' (above) first, then in the current folder / as a full path.
 if amend 
@@ -1496,6 +1496,7 @@ else
         end
         thisLog = changeLogIO('rows',[filename sfx],logRows);
         xlNormPath = fullfile(output_dir,[filename sfx '_normalized.xlsx']);
+        ratioIslet = []; cellClass = {};   % set below when CaMPARI info exists (reset so nothing carries over from the previous islet)
         prevLogNorm = changeLogIO('read',xlNormPath);      % the export below deletes + rewrites the workbook
 
         fprintf('Processing %s%s (%d cells, %d frames)\n',filename,sfx,size(CellTC_use,2),size(CellTC_use,1));
@@ -1537,6 +1538,16 @@ else
                         writetable(Td,xlN,'Sheet','data');
                         writetable(table(cellLabels(:),ratioIslet(:),cellClass(:), ...
                             'VariableNames',{'Cell','RedGreenRatio','Class'}),xlN,'Sheet','Cell classes');
+                        % 'Means' sheet (rows = periods, columns = cells): add the mean of the GREEN and of the RED cells
+                        % next to the existing mean of ALL cells (mean_across_cells)
+                        Tm = readtable(xlN,'Sheet','Means');
+                        isGm = strcmp(cellClass(:)','green'); isRm = strcmp(cellClass(:)','red');
+                        cellCols = cellLabels(ismember(cellLabels,Tm.Properties.VariableNames));
+                        Xm = Tm{:,cellCols};
+                        gSel = ismember(cellCols,cellLabels(isGm)); rSel = ismember(cellCols,cellLabels(isRm));
+                        Tm.mean_green_cells = mean(Xm(:,gSel),2,'omitnan'); if ~any(gSel), Tm.mean_green_cells(:) = NaN; end
+                        Tm.mean_red_cells   = mean(Xm(:,rSel),2,'omitnan'); if ~any(rSel), Tm.mean_red_cells(:) = NaN; end
+                        writetable(Tm,xlN,'Sheet','Means');
                         fprintf('  CaMPARI: %d red, %d green cell(s) (threshold %.3g); means added to %s\n', ...
                             nnz(strcmp(cellClass,'red')),nnz(strcmp(cellClass,'green')),campariThreshold,[filename sfx '_normalized.xlsx']);
                     catch ME2
@@ -1569,7 +1580,11 @@ else
                 if isfield(matsFA,'normalized')
                     xlFA = fullfile(output_dir,[filename sfx '_FreqAmpDutyCycle.xlsx']);
                     prevLogFA = changeLogIO('read',xlFA);      % export below rewrites the workbook -> keep the old log
-                    freqAmpDutyCycleExport(matsFA.normalized, IsletPeriods_all{k}, timeVec, cellLabels, xlFA);
+                    if strcmp(user,'Evelyn') && ~isempty(ratioIslet) && numel(cellClass) == numel(cellLabels)
+                        freqAmpDutyCycleExport(matsFA.normalized, IsletPeriods_all{k}, timeVec, cellLabels, xlFA, ratioIslet, cellClass);
+                    else
+                        freqAmpDutyCycleExport(matsFA.normalized, IsletPeriods_all{k}, timeVec, cellLabels, xlFA);
+                    end
                     changeLogIO('write',xlFA,[prevLogFA; thisLog]);
                 end
             catch ME
