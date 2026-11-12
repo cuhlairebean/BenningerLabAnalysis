@@ -6,7 +6,10 @@
 % For multiple channels: skip down to 'Masking Islet > For Colocalization'
 % and change the parameters as needed, it also normalizes and generates
 % matrices per islet
-
+addpath('/Users/ibarevel/Documents/GitHub/BenningerLabUniversalFunctions/');
+addpath('/Users/ibarevel/Documents/GitHub/BenningerLabAnalysis/');
+addpath('/Users/ibarevel/Library/Application Support/MathWorks/MATLAB Add-Ons/Toolboxes/Bioformats Image Toolbox/BioformatsImage/')
+javaaddpath('/Users/ibarevel/Documents/MATLAB/bioformats_package.jar');
 
 % NEED: filename.czi and filename_pre.czi for this code to work
 %_pre is a high quality image acquired before calcium imaging experiment. 
@@ -20,19 +23,28 @@
 % To get bug fixes later: choose "New user" again (it pulls the latest code), or run
 % `git pull origin main` in both repo folders.
 
+
+
+
+% command find' %%% CHANGE HERE  %%%%%%%%%' to get to areas you can edit for your analysis: 
+
+
+
+
+
 %% SETTINGS (edit here)
 % RERUN MODE: set rerun = true to skip all image processing/clicking and rebuild the
 % normalized/frequency outputs from files saved by a previous run (no popups).
 rerun             = false;
 rerunFolder       = 'out';      % folder containing the previous outputs, e.g. '/Volumes/.../output'
-rerunFilename     = '10-29-26_11mMPC_d1';      % the name typed at "Input Filename" in the original run
+rerunFilename     = '10-22-26_5mMPC_d1';      % the name typed at "Input Filename" in the original run
 rerunMultiplyNeg1 = true;   % same choice as the original run
 rerunUser         = 'Evelyn'; % 'Evelyn' or 'Other'
 rerunDrug         = 'KCl';      % Evelyn extras (only used if rerunUser = 'Evelyn')
-rerunSex          = 'F';
-rerunAge          = '3.7 m';
+rerunSex          = 'M';
+rerunAge          = '47 m';
 % --- WHAT TO CHANGE IN THE RERUN (all optional; leave empty = redo everything with the saved choices) ---
-rerunIslets       = ['all'];      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
+rerunIslets       = 'all';      % islets to reprocess, e.g. [2] or 'all'. [] = all islets
 rerunReviewIslets = [];      % islets whose traces                        open in the click-to-remove window: [2], [1 3] or 'all'
 rerunReselectPeriods = [];   % islets whose periods (baseline, phases...) are re-clicked: [2] or 'all' (previous ones are shown)
 rerunRemoveCells  = {'all'};      % remove specific cells without a window: {islet, [cell numbers]; ...}
@@ -41,7 +53,7 @@ rerunRestoreIslets = [];     % islets whose previously removed cells are put bac
 rerunCampari      = false;   % Evelyn only, REDO mode: also redo the CaMPARI channels / background / threshold / red-green
                              %   classification with a NEW color file. Re-uses all saved traces, cells and periods; only the
                              %   _pre.czi is needed (found in the current folder, or you pick it). Colored figures update.
-rerunPreCzi       = '10-29-26_11mMPC_d1';      % optional: path/name of the _pre.czi for rerunCampari ('' = search the current folder)
+rerunPreCzi       = '';      % optional: path/name of the _pre.czi for rerunCampari ('' = search the current folder)
 rerunPlotsOnly    = false;   % REDO mode: ONLY redraw the normalized-trace figures from the saved _normalized.xlsx
                              %   (no reprocessing, no exports, no windows). Use after changing how the plot looks.
                              %   Islets = rerunIslets. CaMPARI colors use the saved _CampariInfo.mat.
@@ -299,7 +311,7 @@ addpath(filepath);
 
 % 2. INPUT FILE NAME                                                                            %%% CHANGE HERE  %%%%%%%%%
 
-filename = ['9-24-26_11mMPC_d2.czi'];
+filename = ['10-22-26_11mMPC_d2.czi'];
 % raw time-series file; 'filename' is later replaced by the output name you type.
 % The file is looked for in 'filepath' (above) first, then in the current folder / as a full path.
 if amend 
@@ -425,8 +437,8 @@ T=st:1:ed;
 
 images=images(:,:,st:ed);
 % Define the start and end frames for your reference image
-start_frame =1900;                                                                                         %%% CHANGE HERE  %%%%%%%%%
-end_frame = 2800;
+start_frame = 500;                                                                                         %%% CHANGE HERE  %%%%%%%%%
+end_frame = 1700;
 
 % Check to ensure the selected range is valid
 if start_frame < 1 || end_frame > size(images, 3) || start_frame > end_frame
@@ -1602,12 +1614,12 @@ else
                 tvDS = timeVec(:);
                 if isempty(tvDS), tvDS = (1:nT)'; end
                 if numel(tvDS) < nT, tvDS(end+1:nT,1) = NaN; end
-                dataDS = table((1:nT)',tvDS(1:nT),'VariableNames',{'index','time'});
-                if isfield(matsDS,'detrended')
-                    dataDS = [dataDS, array2table(matsDS.detrended,'VariableNames',strcat('detrended_',cellLabels))];
-                end
+                % sheet in the format read by 2_CaMPARI_Analysis_Pipeline.ipynb: first column 'Time (s)', then ONE
+                % column per cell named Cell_cell<N> holding the NORMALIZED trace (dF/F-scale, already multiplied by -1
+                % if selected; the notebook's plots/analysis expect this scale and do not flip the sign again)
+                dataDS = [{'Time (s)'}, strcat('Cell_',cellLabels(:)')];
                 if isfield(matsDS,'normalized')
-                    dataDS = [dataDS, array2table(matsDS.normalized,'VariableNames',strcat('normalized_',cellLabels))];
+                    dataDS = [dataDS; num2cell([tvDS(1:nT), matsDS.normalized])];
                 end
                 P = IsletPeriods_all{k};
                 [blI,blT]  = formatPeriodRange(P,'Baseline',tvDS,nFr);
@@ -1616,11 +1628,13 @@ else
                 [spI,spT]  = formatPeriodRange(P,'Second phase',tvDS,nFr);
                 [drI,drT]  = formatPeriodRange(P,'Drug',tvDS,nFr);
                 S = struct();
-                S.(sprintf('Islet_%d',k)) = formatIndexRanges(cellIDs_use);
+                % the notebook needs ONE 'first-last' range per islet (not '1-5,7-9')
+                S.(sprintf('Islet_%d',k)) = sprintf('%d-%d',min(cellIDs_use),max(cellIDs_use));
                 S.BL_idx = blI; S.HG_idx = hgI; S.FP_idx = fpI; S.SP_idx = spI; S.DRG_idx = drI;
                 S.DRG_ID = drgChoice; S.Glucose_Conditions = glucoseVal; S.Sex = sexChoice; S.Age = ageVal;
                 S.BL = blT; S.HG = round(hgT,2); S.FP = fpT; S.SP = spT; S.DRG = drT;
-                appendAnalysisDataset(analysisDatasetPath,[filename sfx],S,dataDS);
+                % row key + sheet name as the notebook expects: <filename>_Islet_<N>
+                appendAnalysisDataset(analysisDatasetPath,sprintf('%s_Islet_%d',filename,k),S,dataDS);
                 prevLogDS = changeLogIO('read',analysisDatasetPath);
                 changeLogIO('write',analysisDatasetPath,[prevLogDS; thisLog]);
             catch ME
