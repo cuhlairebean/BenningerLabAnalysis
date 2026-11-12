@@ -1607,6 +1607,8 @@ else
         % ---- Analysis_dataset_detrended.xlsx (Evelyn): one row + one matrices sheet per islet ----
         if strcmp(user,'Evelyn')
             try
+                % appendAnalysisDataset.m is Evelyn-only, kept outside the shared repos
+                addpath('/Users/ibarevel/Desktop/CaMPARI/Calcium Imaging/Analysis/personal_tools');
                 [~,matsDS] = processAndExportPeriods(CellTC_use, IsletPeriods_all{k}, timeVec, '', ...
                     cellLabels, applyNeg1, false);        % compute only, no files
                 nT  = size(CellTC_use,1);
